@@ -1,0 +1,361 @@
+:root {
+  --bg: #16181d;
+  --bg-panel: #1d2027;
+  --bg-sidebar: #131519;
+  --border: #2a2e37;
+  --text: #e6e8ee;
+  --text-dim: #8b93a3;
+  --accent: #4f8cff;
+  --accent-soft: rgba(79, 140, 255, 0.14);
+  --danger: #ff6b6b;
+  --ok: #4ade80;
+  --warn: #f0b429;
+  --warn-soft: rgba(240, 180, 41, 0.12);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+.view {
+  display: none;
+}
+
+.view.is-active {
+  display: flex;
+}
+
+/* ---------- 认证视图 ---------- */
+.auth-view {
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-card {
+  width: 340px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.brand-name {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.brand-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.config-notice {
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-sidebar);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.auth-tab.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.auth-form input {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-msg {
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.auth-msg.is-ok {
+  color: var(--ok);
+}
+
+#auth-submit {
+  padding: 11px 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#auth-submit:hover {
+  filter: brightness(1.1);
+}
+
+/* ---------- 主界面 ---------- */
+.app {
+  height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar .brand {
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sidebar .brand-name {
+  font-size: 20px;
+}
+
+.sidebar .brand-sub {
+  font-size: 12px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.user-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.role-badge {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.role-badge[data-role="owner"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.role-badge[data-role="agent"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.nav {
+  padding: 12px 10px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.nav-section {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 12px 8px;
+  letter-spacing: 1px;
+}
+
+#nav-services {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-item:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.nav-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.nav-item.is-active .nav-icon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.logout-btn {
+  width: 100%;
+  padding: 9px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logout-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---------- 内容区 ---------- */
+.content {
+  flex: 1;
+  padding: 36px;
+  overflow-y: auto;
+}
+
+.panel {
+  display: none;
+}
+
+.panel.is-active {
+  display: block;
+}
+
+.panel h1 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.wip {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+
+.placeholder {
+  color: var(--text-dim);
+  line-height: 1.7;
+  max-width: 560px;
+}

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+  <title>海拓</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 认证视图：未登录时显示 -->
+  <div id="auth-view" class="view auth-view is-active">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="brand-name">海拓</span>
+        <span class="brand-sub">平台</span>
+      </div>
+      <div id="config-notice" class="config-notice" hidden>
+        未配置 Supabase：请复制 supabase.config.example.json 为 supabase.config.json 并填写
+      </div>
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab is-active" type="button">登录</button>
+        <button id="tab-register" class="auth-tab" type="button">注册</button>
+      </div>
+      <form id="auth-form" class="auth-form">
+        <label>
+          邮箱
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label>
+          密码
+          <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位" />
+        </label>
+        <div id="auth-msg" class="auth-msg"></div>
+        <button id="auth-submit" type="submit">登录</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主界面视图：登录后显示 -->
+  <div id="app-view" class="view app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-name">海拓</span>
+        <span class="brand-sub">平台</span>
+      </div>
+      <div class="user-chip">
+        <span id="user-avatar" class="user-avatar">?</span>
+        <span id="user-name" class="user-name"></span>
+        <span id="role-badge" class="role-badge">用户</span>
+      </div>
+      <nav class="nav">
+        <div class="nav-section">服务</div>
+        <div id="nav-services"></div>
+        <div class="nav-section" id="mgmt-section" hidden>管理</div>
+        <div id="nav-management"></div>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="logout" class="logout-btn" type="button">退出登录</button>
+      </div>
+    </aside>
+    <main id="content" class="content"></main>
+  </div>
+
+  <script src="services.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
