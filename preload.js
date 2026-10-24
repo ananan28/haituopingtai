@@ -32,7 +32,21 @@ contextBridge.exposeInMainWorld('haituo', {
     listMyUsers: () => ipcRenderer.invoke('distribution:listMyUsers')
   },
   clipboard: {
-    write: (text) => ipcRenderer.invoke('clipboard:write', text)
+    write: (text) => ipcRenderer.invoke('clipboard:write', text),
+    writeImage: (dataUrl) => ipcRenderer.invoke('clipboard:writeImage', dataUrl)
+  },
+  ocr: {
+    recognize: (dataUrl) => ipcRenderer.invoke('ocr:recognize', dataUrl)
+  },
+  screenshot: {
+    start: (mode) => ipcRenderer.invoke('screenshot:start', mode),
+    setDefault: (mode) => ipcRenderer.invoke('screenshot:setDefault', mode),
+    status: () => ipcRenderer.invoke('screenshot:status'),
+    onResult: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('screenshot:result', listener);
+      return () => ipcRenderer.removeListener('screenshot:result', listener);
+    }
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

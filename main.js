@@ -3,6 +3,7 @@ const path = require('path');
 const pkg = require('./package.json');
 const auth = require('./auth');
 const { registerIpc } = require('./ipc');
+const screenshot = require('./screenshot');
 
 // 品牌唯一来源：package.json 的 productName
 const BRAND_NAME = pkg.productName || pkg.name;
@@ -46,7 +47,8 @@ app.whenReady().then(() => {
     }
   });
 
-  createWindow();
+  const mainWin = createWindow();
+  screenshot.init({ getMainWindow: () => mainWin });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

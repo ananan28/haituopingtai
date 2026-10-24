@@ -1,6 +1,7 @@
 const { ipcMain, clipboard, BrowserWindow } = require('electron');
 const auth = require('./auth');
 const distribution = require('./distribution');
+const ocr = require('./ocr');
 
 // IPC 通道：把渲染层请求转发给对应模块
 function registerIpc() {
@@ -32,6 +33,9 @@ function registerIpc() {
     clipboard.writeText(String(text ?? ''));
     return { ok: true };
   });
+
+  // 截屏 OCR：识别原图，标注层不参与识别
+  handle('ocr:recognize', (dataUrl) => ocr.recognize(dataUrl));
 
   // 自绘标题栏的窗口控制
   const withWindow = (channel, fn) =>

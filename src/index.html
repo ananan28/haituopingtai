@@ -2,10 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
   <title>海拓商业版</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="workbench.css" />
+  <link rel="stylesheet" href="studio.css" />
 </head>
 <body>
   <!-- 认证视图：未登录时显示 -->
@@ -166,6 +167,7 @@
         <input id="catalog-search" type="search" placeholder="搜索渠道，例如 Telegram、WhatsApp…" autocomplete="off" />
         <span id="catalog-count" class="catalog-count"></span>
       </div>
+      <div class="catalog-notice">37 个渠道已进入服务注册表，首期仅提供配置预览，全部标记「即将上线」；自定义服务可填写 URL 预留内嵌位。</div>
       <div id="catalog-grid" class="catalog-grid"></div>
       <footer class="modal-foot">
         <span>端口级隔离 · 每个账号独立 Cookie、指纹与会话分区</span>
@@ -196,6 +198,16 @@
             <label class="cfg-label">生成数量
               <input id="cfg-count" type="number" min="1" max="20" value="1" />
             </label>
+          </div>
+
+          <label id="cfg-url-wrap" class="cfg-label" hidden>服务地址 URL
+            <input id="cfg-url" type="url" placeholder="https://example.com/chat" autocomplete="off" />
+            <small class="cfg-help">自定义服务将以内嵌网页方式接入，独立会话分区与指纹。</small>
+          </label>
+
+          <div class="cfg-coming">
+            <span class="cfg-coming-tag">即将上线</span>
+            <span>首期不接真实渠道，保存后仅记录配置草稿，不创建账号。</span>
           </div>
 
           <div class="cfg-section">
@@ -274,13 +286,13 @@
             </label>
           </div>
 
-          <div class="cfg-note">保存后会在顶部生成账号 chip，并打开该账号的内嵌登录页。演示阶段不连接真实渠道。</div>
+          <div class="cfg-note">渠道接入将在下一阶段开放；当前保存仅记录端口配置草稿（名称、回翻、指纹、代理、Cookie / URL），不会连接真实服务。</div>
         </div>
         <footer class="modal-foot">
           <span id="cfg-partition-hint">将分配独立 session partition</span>
           <div class="modal-foot-actions">
             <button class="hp-ghost" data-close="channel-config" type="button">取消</button>
-            <button class="hp-primary" type="submit">保存并登录</button>
+            <button class="hp-primary" type="submit">保存配置草稿</button>
           </div>
         </footer>
       </form>
@@ -359,7 +371,101 @@
     </section>
   </div>
 
+  <!-- 截屏翻译工作台（结果留在主窗内，不新建顶层窗口） -->
+  <div id="shot-studio" class="shot-studio" hidden>
+    <header class="shot-head">
+      <div class="shot-brand">
+        <span class="shot-logo">截</span>
+        <div class="shot-brand-copy">
+          <strong>截屏翻译</strong>
+          <small id="shot-sub">选区截图 · OCR 读取原图，涂鸦与马赛克不影响识别</small>
+        </div>
+      </div>
+      <div id="shot-modes" class="shot-modes" role="tablist" aria-label="截屏模式"></div>
+      <div class="shot-head-right">
+        <span id="shot-hotkey" class="shot-hotkey">Alt + Shift + S</span>
+        <button id="shot-close" class="shot-close" type="button" title="关闭截屏工作台">×</button>
+      </div>
+    </header>
+    <div class="shot-body">
+      <section class="shot-stage-wrap">
+        <div id="shot-stage" class="shot-stage">
+          <canvas id="shot-canvas"></canvas>
+          <input id="shot-text-input" class="shot-text-input" type="text" maxlength="80" placeholder="输入文字后回车" hidden />
+        </div>
+        <div id="shot-toolbar" class="shot-toolbar" role="toolbar" aria-label="截图标注工具"></div>
+        <div id="shot-palette" class="shot-palette"></div>
+      </section>
+      <aside class="shot-side" aria-label="识别与翻译结果">
+        <div class="shot-side-head">
+          <div>
+            <span id="shot-side-kicker" class="shot-side-kicker">OCR</span>
+            <h3 id="shot-side-title">识别文字</h3>
+          </div>
+          <span id="shot-side-badge" class="shot-side-badge">原图</span>
+        </div>
+        <div id="shot-side-body" class="shot-side-body"></div>
+        <div class="shot-engine">
+          <label class="shot-engine-label">翻译引擎
+            <select id="shot-engine"></select>
+          </label>
+          <p id="shot-engine-note" class="shot-engine-note">自动：按后台顺序链逐级降级</p>
+        </div>
+        <div class="shot-side-actions">
+          <button id="shot-copy" class="hp-ghost" type="button">复制全文</button>
+          <button id="shot-insert" class="hp-primary" type="button">插入输入框</button>
+        </div>
+        <button id="shot-again" class="shot-link" type="button">重新识别 / 翻译</button>
+        <p class="shot-terms">术语库已注入：Passkey → 通行密钥 · Proforma Invoice → 形式发票 · FOB → 离岸价</p>
+      </aside>
+    </div>
+    <footer class="shot-foot">
+      <span class="shot-foot-label">最近截图</span>
+      <div id="shot-recent" class="shot-recent"></div>
+      <span id="shot-billing" class="shot-billing">字符计费 · 0</span>
+    </footer>
+  </div>
+
+  <!-- 服务商运营面板（owner 预留位） -->
+  <div id="provider-modal" class="modal-backdrop" hidden>
+    <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="provider-title">
+      <header class="modal-head">
+        <div>
+          <span class="modal-kicker">平台后台 · Owner</span>
+          <h2 id="provider-title">翻译服务商运营</h2>
+        </div>
+        <button class="modal-close" data-close="provider-modal" type="button" title="关闭">×</button>
+      </header>
+      <div class="provider-body">
+        <div class="provider-chain">
+          <span class="provider-chain-label">自动降级顺序</span>
+          <div id="provider-chain" class="provider-chain-list"></div>
+        </div>
+        <p class="provider-rule">三级裁决：客户单次手动选择 → 客户默认偏好 → 后台默认顺序。客户侧不可见任何 API / Key，所有调用由平台托管。</p>
+        <div class="provider-head-row">
+          <span>服务商</span>
+          <span>套餐可见性</span>
+          <span>额度 / 千字符</span>
+          <span>状态</span>
+        </div>
+        <div id="provider-rows" class="provider-rows"></div>
+        <div class="provider-note">
+          <span>DeepL 成本最高：默认压底、单价最高。v1 唯一计费单位 = 翻译字符，按引擎单价扣额度。</span>
+          <span id="provider-usage">本次会话已扣 0 额度 / 0 字符</span>
+        </div>
+      </div>
+      <footer class="modal-foot">
+        <span>拖拽行可排序 · 修改即时保存到本地运营配置</span>
+        <div class="modal-foot-actions">
+          <button class="hp-ghost" data-close="provider-modal" type="button">关闭</button>
+          <button id="provider-save" class="hp-primary" type="button">保存运营配置</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+
   <script src="services.js"></script>
+  <script src="shot-studio.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

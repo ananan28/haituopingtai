@@ -16,7 +16,8 @@ const CHANNEL_ALIASES = {
 
 const STORAGE = {
   mode: 'haituo.workspace.mode',
-  hidden: 'haituo.workspace.hiddenFeatures'
+  hidden: 'haituo.workspace.hiddenFeatures',
+  drafts: 'haituo.channelDrafts'
 };
 
 document.title = BRAND.name;
@@ -193,6 +194,8 @@ const cfgChannelIcon = document.getElementById('cfg-channel-icon');
 const cfgTitle = document.getElementById('cfg-title');
 const cfgName = document.getElementById('cfg-name');
 const cfgCount = document.getElementById('cfg-count');
+const cfgUrlWrap = document.getElementById('cfg-url-wrap');
+const cfgUrl = document.getElementById('cfg-url');
 const cfgSendTr = document.getElementById('cfg-send-tr');
 const cfgRecvTr = document.getElementById('cfg-recv-tr');
 const cfgGroupTr = document.getElementById('cfg-group-tr');
@@ -201,6 +204,7 @@ const cfgRegion = document.getElementById('cfg-region');
 const cfgLang = document.getElementById('cfg-lang');
 const cfgBrowser = document.getElementById('cfg-browser');
 const cfgProxyMode = document.getElementById('cfg-proxy-mode');
+const cfgProxy = document.getElementById('cfg-proxy');
 const cfgCookie = document.getElementById('cfg-cookie');
 const accountEditModal = document.getElementById('account-edit');
 const editForm = document.getElementById('edit-form');
@@ -1166,7 +1170,10 @@ function buildMyUsersPanel() {
 
 function buildUserMenu() {
   const roleItems = [];
-  if (state.role === 'owner') roleItems.push({ action: 'agent', label: '代理管理' });
+  if (state.role === 'owner') {
+    roleItems.push({ action: 'providers', label: '服务商运营' });
+    roleItems.push({ action: 'agent', label: '代理管理' });
+  }
   if (state.role === 'agent') roleItems.push({ action: 'my-users', label: '我的用户' });
   userMenu.innerHTML = `<div class="um-head">
       <strong>${escapeHtml(state.user ? state.user.email : '')}</strong>
@@ -1213,6 +1220,15 @@ function toggleFeature(id) {
   if (state.hiddenFx.includes(id)) return;
   const feature = FEATURES.find((f) => f.id === id);
   if (!feature) return;
+  if (feature.status === 'deferred') {
+    showGlobalToast('「' + feature.name + '」已预留插件位（slot: ' + (feature.slot || 'plugin') + '），后续版本接入');
+    return;
+  }
+  if (id === 'screenshot') {
+    if (window.HaituoStudio) window.HaituoStudio.startCapture();
+    else showGlobalToast('截屏工作台未加载');
+    return;
+  }
   if (state.fxOpen && state.fxId === id) {
     closePanel();
     return;
@@ -1255,7 +1271,7 @@ function renderFxManager() {
     <div class="fx-manager-list">
       ${FEATURES.map((f) => `<label>
         <input type="checkbox" value="${escapeHtml(f.id)}"${state.hiddenFx.includes(f.id) ? '' : ' checked'} />
-        <span>${escapeHtml(f.name)}</span>
+        <span>${escapeHtml(f.name)}</span>${f.status === 'deferred' ? '<span class="fx-slot-tag">插件位</span>' : ''}
       </label>`).join('')}
     </div>
     <p class="fx-manager-note">取消勾选后隐藏对应图标，面板会同步收起。</p>`;
@@ -1352,6 +1368,10 @@ function buildFeaturePanel(id) {
         ${fxField('翻译模式', `<select class="fx-select"><option>自动翻译收到的消息</option><option>仅手动触发</option></select>`)}
       </div>
       <div class="fx-block">
+        <div class="fx-block-title">服务商偏好</div>
+        ${window.HaituoStudio ? window.HaituoStudio.customerDefaultSelectHtml() : ''}
+      </div>
+      <div class="fx-block">
         ${hpToggle('始终翻译', '收到的消息自动翻译', true)}
         ${hpToggle('历史消息补翻', '进入会话时翻译最近 30 条', true)}
         ${hpToggle('发出消息也翻译', '发送前翻译为对方语言', false)}
@@ -1366,11 +1386,6 @@ function buildFeaturePanel(id) {
     wrap.innerHTML = `<div class="fx-block">
         ${fxField('对话记忆条数', '<input class="fx-input" type="number" min="0" max="200" value="30" />', '翻译时参考最近 N 条对话上下文')}
         ${fxField('翻译角色', '<select class="fx-select"><option>商务口吻</option><option>日常口语</option><option>技术术语</option></select>')}
-      </div>
-      <div class="fx-block">
-        <div class="fx-block-title">语音（TTS）</div>
-        ${fxField('声音', '<select class="fx-select"><option>Français · Amélie</option><option>English · Jenny</option><option>中文 · 晓晓</option></select>')}
-        <button class="hp-ghost" type="button" data-toast="试听语音（演示）">试听声音</button>
       </div>
       <div class="fx-block">
         <div class="fx-block-title">译文样式</div>
@@ -1487,7 +1502,7 @@ function buildFeaturePanel(id) {
       </div>`;
   } else if (id === 'translate') {
     wrap.innerHTML = `<div class="fx-block">
-        ${fxField('翻译服务商', '<select class="fx-select"><option>DeepL</option><option>Google Translate</option><option>Azure Translator</option><option>OpenAI</option></select>')}
+        ${window.HaituoStudio ? window.HaituoStudio.panelProviderSelectHtml() : ''}
         <div class="fx-grid-2">
           ${fxField('源语言', '<select class="fx-select"><option>自动检测</option><option>Français</option><option>中文</option></select>')}
           ${fxField('目标语言', '<select class="fx-select"><option>中文（简体）</option><option>English</option></select>')}
@@ -1497,8 +1512,8 @@ function buildFeaturePanel(id) {
       </div>
       <div class="fx-block">
         <div class="fx-block-title">译文</div>
-        <div class="fx-tr-out" id="fx-tr-out">您好，我想订购 20 件。</div>
-        <p class="fx-note">演示翻译，不会调用真实服务商；接入后按字符扣费。</p>
+        <div class="fx-tr-out" id="fx-tr-out">您好，我想订购 20 件。能否提供一份正式报价？</div>
+        <p class="fx-note" id="fx-tr-meta">演示译文，不调用真实 API；按翻译字符 × 服务商单价扣额度。</p>
       </div>`;
   } else if (id === 'writing') {
     wrap.innerHTML = `<div class="fx-block">
@@ -1568,7 +1583,8 @@ function buildFeaturePanel(id) {
         <div class="fx-block-title">界面</div>
         ${fxField('界面语言', '<select class="fx-select"><option>简体中文</option><option>English</option><option>Français</option></select>')}
         ${hpToggle('紧凑模式', '缩小账号 chips 与列表间距', false)}
-      </div>`;
+      </div>
+      ${window.HaituoStudio ? window.HaituoStudio.screenshotSettingsHtml() : ''}`;
   } else if (id === 'reminder') {
     wrap.innerHTML = `<div class="fx-block">
         ${fxField('提醒时间', '<input class="fx-input" type="datetime-local" />')}
@@ -1659,7 +1675,18 @@ function bindPanelEvents(root) {
     if (e.target.closest('[data-tr-run]')) {
       const input = root.querySelector('#fx-tr-input');
       const out = root.querySelector('#fx-tr-out');
-      if (out) out.textContent = input && input.value.trim() ? '您好，我想订购 20 件。能否提供一份正式报价？' : '请先输入原文。';
+      const select = root.querySelector('#fx-tr-provider');
+      const meta = root.querySelector('#fx-tr-meta');
+      const source = input ? input.value.trim() : '';
+      if (!source) {
+        if (out) out.textContent = '请先输入原文。';
+        return;
+      }
+      const res = window.HaituoStudio
+        ? window.HaituoStudio.runPanelTranslation(source, select ? select.value : '')
+        : { ok: false, error: '翻译服务未加载' };
+      if (out) out.textContent = res.ok ? res.translation : res.error;
+      if (meta) meta.textContent = res.ok ? res.meta : (res.error || '翻译失败');
       return;
     }
     if (e.target.closest('[data-gen]')) {
@@ -1791,10 +1818,12 @@ contextMenu.addEventListener('click', (e) => {
 /* ---------- 添加渠道 ---------- */
 
 function catalogCardHtml(channel) {
-  return `<button class="cat-card" type="button" data-channel-id="${escapeHtml(channel.id)}">
+  const custom = Boolean(channel.custom);
+  return `<button class="cat-card${custom ? ' is-custom' : ''}" type="button" data-channel-id="${escapeHtml(channel.id)}">
     <span class="ch-tile cat-icon" data-channel="${escapeHtml(channel.id)}">${escapeHtml(channel.icon)}</span>
     <span class="cat-name">${escapeHtml(channel.name)}</span>
     <span class="cat-tag">${escapeHtml(channel.tag)}</span>
+    <span class="cat-coming">${custom ? 'URL 预留' : '即将上线'}</span>
   </button>`;
 }
 
@@ -1802,7 +1831,7 @@ function renderCatalog(keyword) {
   const q = String(keyword || '').trim().toLowerCase();
   const list = CATALOG.filter((c) => !q || (c.name + ' ' + c.tag + ' ' + c.id).toLowerCase().includes(q));
   catalogGrid.innerHTML = list.map(catalogCardHtml).join('') || '<p class="catalog-empty">没有匹配的渠道</p>';
-  catalogCount.textContent = list.length + ' 个渠道';
+  catalogCount.textContent = list.length + ' 个服务';
 }
 
 function openCatalog() {
@@ -1815,23 +1844,31 @@ function openCatalog() {
 
 function openConfig(channel) {
   state.pendingChannel = channel;
+  const custom = Boolean(channel.custom || channel.url);
   cfgChannelIcon.dataset.channel = channel.id;
   cfgChannelIcon.textContent = channel.icon;
-  cfgTitle.textContent = '新增 ' + channel.name + ' 账号';
-  cfgName.value = channel.name + ' 账号';
+  cfgTitle.textContent = custom ? '配置自定义服务' : '配置 ' + channel.name + ' 端口';
+  cfgName.value = channel.name + ' 01';
+  cfgName.placeholder = custom ? '例如：我的独立站客服' : '例如：法国批发 01';
   cfgCount.value = '1';
+  cfgUrlWrap.hidden = !custom;
+  cfgUrl.value = '';
   cfgSendTr.checked = true;
   cfgRecvTr.checked = true;
   cfgGroupTr.checked = false;
   cfgFingerprint.checked = true;
   cfgCookie.checked = false;
   cfgProxyMode.selectedIndex = 0;
+  if (cfgProxy) cfgProxy.value = '';
   cfgRegion.selectedIndex = 0;
   cfgLang.selectedIndex = 0;
   cfgBrowser.selectedIndex = 0;
   closeModal('channel-catalog');
   openModal('channel-config');
-  setTimeout(() => cfgName.select(), 30);
+  setTimeout(() => {
+    if (custom) cfgUrl.focus();
+    else cfgName.select();
+  }, 30);
 }
 
 function shortId() {
@@ -1962,7 +1999,7 @@ function handleTitleTool(tool) {
   }
   if (tool === 'settings') return toggleFeature('other');
   if (tool === 'tasks') return toggleFeature('reminder');
-  if (tool === 'stats') return toggleFeature('fans');
+  if (tool === 'stats') return showGlobalToast('粉丝统计为插件位预留（slot: analytics），后续版本接入');
   if (tool === 'bell') {
     state.view = 'system';
     renderAccounts();
@@ -2002,6 +2039,8 @@ userMenu.addEventListener('click', async (e) => {
     openQuota(activeAccount());
   } else if (action === 'agent') {
     openSheet('代理管理', buildAgentManagePanel());
+  } else if (action === 'providers') {
+    if (window.HaituoStudio) window.HaituoStudio.openProviderPanel();
   } else if (action === 'my-users') {
     openSheet('我的用户', buildMyUsersPanel());
   } else if (action === 'about') {
@@ -2076,32 +2115,45 @@ channelForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const channel = state.pendingChannel;
   if (!channel) return;
-  const baseName = cfgName.value.trim() || channel.name + ' 账号';
+  const custom = Boolean(channel.custom || channel.url);
+  const baseName = cfgName.value.trim() || channel.name + ' 01';
   const count = Math.max(1, Math.min(20, Number.parseInt(cfgCount.value, 10) || 1));
-  const created = [];
-  for (let i = 1; i <= count; i++) {
-    created.push({
-      id: 'acc-' + Date.now() + '-' + i + '-' + shortId(),
-      name: count > 1 ? baseName + ' ' + String(i).padStart(2, '0') : baseName,
-      channel: channel.id,
-      avatar: channel.icon.slice(0, 2),
-      account: '待登录',
-      status: 'online',
-      unread: 0,
-      partition: 'persist:' + channel.id + '-' + shortId(),
-      loggedIn: false,
-      demo: false,
-      ui: { font: 'md', density: 3 }
-    });
+  const url = cfgUrl ? cfgUrl.value.trim() : '';
+  if (custom && !/^https?:\/\/[^\s]+$/i.test(url)) {
+    showGlobalToast('请填写以 http:// 或 https:// 开头的服务地址');
+    cfgUrl.focus();
+    return;
   }
-  state.accounts.push(...created);
-  state.activeId = created[0].id;
-  state.view = 'account';
+  let drafts = [];
+  try {
+    const saved = JSON.parse(readStorage(STORAGE.drafts, '[]'));
+    drafts = Array.isArray(saved) ? saved : [];
+  } catch {
+    drafts = [];
+  }
+  drafts.push({
+    id: 'draft-' + Date.now() + '-' + shortId(),
+    channel: channel.id,
+    channelName: channel.name,
+    custom,
+    name: baseName,
+    count,
+    url,
+    sendTranslate: cfgSendTr.checked,
+    receiveTranslate: cfgRecvTr.checked,
+    groupTranslate: cfgGroupTr.checked,
+    fingerprint: cfgFingerprint.checked,
+    region: cfgRegion.value,
+    lang: cfgLang.value,
+    browser: cfgBrowser.value,
+    proxyMode: cfgProxyMode.value,
+    proxy: cfgProxy ? cfgProxy.value.trim() : '',
+    cookieLogin: cfgCookie.checked,
+    savedAt: new Date().toISOString()
+  });
+  writeStorage(STORAGE.drafts, JSON.stringify(drafts));
   closeModal('channel-config');
-  renderAccounts();
-  renderPageTabs();
-  renderContent();
-  showGlobalToast('已创建 ' + count + ' 个账号，请完成登录');
+  showGlobalToast('已保存配置草稿（共 ' + drafts.length + ' 条），首期不创建账号');
 });
 
 quotaRecharge.addEventListener('click', () => {

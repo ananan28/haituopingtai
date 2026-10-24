@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <title>截屏选区</title>
+  <link rel="stylesheet" href="capture.css" />
+</head>
+<body>
+  <div id="cap-root" class="cap-root">
+    <img id="cap-bg" class="cap-bg" alt="" draggable="false" />
+    <div id="cap-empty" class="cap-empty">正在准备画面…</div>
+    <div id="cap-tip" class="cap-tip">
+      <span class="cap-tip-key">Alt + Shift + S</span>
+      <span>拖动选择区域 · 双击直接执行默认模式 · Esc 取消</span>
+    </div>
+    <div id="cap-box" class="cap-box" hidden>
+      <span id="cap-size" class="cap-size">0 × 0</span>
+      <i class="cap-corner is-tl"></i>
+      <i class="cap-corner is-tr"></i>
+      <i class="cap-corner is-bl"></i>
+      <i class="cap-corner is-br"></i>
+    </div>
+    <div id="cap-bar" class="cap-bar" hidden>
+      <span id="cap-default" class="cap-default">双击默认</span>
+      <button class="cap-mode" type="button" data-mode="copy">
+        <b class="cap-mode-icon">⧉</b><span>复制图片</span>
+      </button>
+      <button class="cap-mode" type="button" data-mode="extract">
+        <b class="cap-mode-icon">A</b><span>提取文字</span>
+      </button>
+      <button class="cap-mode" type="button" data-mode="translate">
+        <b class="cap-mode-icon">译</b><span>翻译</span>
+      </button>
+      <button class="cap-mode" type="button" data-mode="edit">
+        <b class="cap-mode-icon">✎</b><span>编辑</span>
+      </button>
+      <button id="cap-cancel" class="cap-cancel" type="button" title="Esc 取消">取消</button>
+    </div>
+  </div>
+  <script src="capture.js"></script>
+</body>
+</html>
