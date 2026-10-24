@@ -1,7 +1,7 @@
 {
   "name": "haituo-platform",
   "productName": "海拓商业版",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "海拓商业版 - 多语言翻译与多渠道消息聚合平台",
   "author": "海拓",
   "main": "main.js",

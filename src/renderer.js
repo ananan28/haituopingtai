@@ -152,6 +152,8 @@ const loginOnly = document.getElementById('login-only');
 const oauthBlock = document.getElementById('oauth-block');
 const forgotPassword = document.getElementById('forgot-password');
 const googleLogin = document.getElementById('google-login');
+const demoLogin = document.getElementById('demo-login');
+const demoHint = document.getElementById('demo-hint');
 
 const titleTools = document.getElementById('title-tools');
 const acctChips = document.getElementById('acct-chips');
@@ -225,6 +227,7 @@ const sheetBody = document.getElementById('sheet-body');
 const state = {
   user: null,
   role: 'user',
+  demo: false,
   accounts: [],
   activeId: null,
   view: 'account',
@@ -320,6 +323,7 @@ function setAuthMessage(text, isOk) {
 
 function showAuth(message, isOk) {
   closeAllOverlays();
+  state.demo = false;
   appView.classList.remove('is-active');
   authView.classList.add('is-active');
   setAuthMessage(message, isOk);
@@ -328,15 +332,18 @@ function showAuth(message, isOk) {
 function showApp(user) {
   const email = (user && user.email) || (typeof user === 'string' ? user : '') || '';
   const role = (user && user.role) || 'user';
-  state.user = { email, role };
+  const demo = Boolean(user && user.demo);
+  state.user = { email, role, demo };
   state.role = role;
+  state.demo = demo;
 
   authView.classList.remove('is-active');
   appView.classList.add('is-active');
-  userAvatar.textContent = email.charAt(0).toUpperCase();
-  userName.textContent = email;
-  roleBadge.textContent = ROLE_LABELS[role] || role;
-  roleBadge.dataset.role = role;
+  userAvatar.textContent = demo ? '演' : email.charAt(0).toUpperCase();
+  userName.textContent = demo ? '离线演示账号' : email;
+  roleBadge.textContent = demo ? '离线演示' : (ROLE_LABELS[role] || role);
+  roleBadge.dataset.role = demo ? 'demo' : role;
+  roleBadge.title = demo ? '本地演示数据 · 所有者权限' : '';
   setAuthMessage('');
 
   enterWorkspace();
@@ -1177,7 +1184,7 @@ function buildUserMenu() {
   if (state.role === 'agent') roleItems.push({ action: 'my-users', label: '我的用户' });
   userMenu.innerHTML = `<div class="um-head">
       <strong>${escapeHtml(state.user ? state.user.email : '')}</strong>
-      <small>${ROLE_LABELS[state.role] || state.role} · ${escapeHtml(BRAND.name)}</small>
+      <small>${state.demo ? '离线演示 · 所有者权限' : (ROLE_LABELS[state.role] || state.role)} · ${escapeHtml(BRAND.name)}</small>
     </div>
     <button class="um-item" type="button" data-user-action="recharge">充值中心</button>
     <button class="um-item" type="button" data-user-action="quota">查看当前账号配额</button>
@@ -2047,7 +2054,7 @@ userMenu.addEventListener('click', async (e) => {
     openSheet('关于海拓', buildAboutPanel());
   } else if (action === 'logout') {
     closeAllOverlays();
-    await window.haituo.auth.signOut();
+    if (!state.demo) await window.haituo.auth.signOut();
     passwordInput.value = '';
     setMode('login');
     showAuth();
@@ -2202,6 +2209,13 @@ googleLogin.addEventListener('click', () => {
   setAuthMessage('Google 登录待接入（需在 Supabase 配置 OAuth Provider）');
 });
 
+demoLogin.addEventListener('click', () => {
+  passwordInput.value = '';
+  setMode('login');
+  setAuthMessage('');
+  showApp({ email: 'demo@haituo.local', role: 'owner', demo: true });
+});
+
 document.querySelectorAll('.auth-terms a').forEach((a) => {
   a.addEventListener('click', (e) => {
     e.preventDefault();
@@ -2243,6 +2257,7 @@ authForm.addEventListener('submit', async (e) => {
 });
 
 window.haituo.auth.onAuthStateChange(async (payload) => {
+  if (state.demo) return;
   if (payload.event === 'SIGNED_OUT') {
     showAuth('登录已失效，请重新登录');
   } else if (payload.event === 'SIGNED_IN') {
@@ -2256,6 +2271,7 @@ async function boot() {
   bindWindowControls();
   const status = await window.haituo.auth.status();
   configNotice.hidden = status.configured;
+  demoHint.hidden = status.configured;
 
   const res = await window.haituo.auth.getSession();
   if (res && res.ok && res.user) {
