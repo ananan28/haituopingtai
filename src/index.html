@@ -53,42 +53,22 @@
 
   <!-- 主界面视图：登录后显示 -->
   <div id="app-view" class="view app">
-    <aside class="sidebar">
-      <div class="brand">
+    <header class="topbar">
+      <div class="topbar-brand">
         <span class="brand-name" data-brand>海拓商业版</span>
         <span class="brand-sub">平台</span>
       </div>
-      <div class="user-chip">
-        <span id="user-avatar" class="user-avatar">?</span>
-        <span id="user-name" class="user-name"></span>
-        <span id="role-badge" class="role-badge">用户</span>
-      </div>
-      <nav class="nav">
-        <div class="nav-section">服务</div>
-        <div id="nav-services"></div>
-        <div class="nav-section" id="mgmt-section" hidden>管理</div>
-        <div id="nav-management"></div>
-      </nav>
-      <div class="sidebar-footer">
-        <button id="about-btn" class="about-btn" type="button">关于</button>
+      <nav id="topnav" class="topnav" aria-label="主导航"></nav>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <span id="user-avatar" class="user-avatar">?</span>
+          <span id="user-name" class="user-name"></span>
+          <span id="role-badge" class="role-badge">用户</span>
+        </div>
         <button id="logout" class="logout-btn" type="button">退出登录</button>
       </div>
-    </aside>
+    </header>
     <main id="content" class="content"></main>
-  </div>
-
-  <div id="about-modal" class="modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="about-brand">
-      <div class="modal-head">
-        <div>
-          <div id="about-brand" class="brand-name" data-brand>海拓商业版</div>
-          <div class="about-version">版本 <span id="about-version"></span></div>
-        </div>
-        <button id="about-close" class="modal-close" type="button" aria-label="关闭">×</button>
-      </div>
-      <p class="about-desc">多语言翻译 · 多渠道消息聚合 · 代理分销</p>
-      <p class="about-note">账号与数据由 Supabase 安全存储 · 当前为商业版开发预览</p>
-    </div>
   </div>
 
   <script src="services.js"></script>

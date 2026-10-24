@@ -1,5 +1,5 @@
-const services = window.HAITUO_SERVICES || [];
-const management = window.HAITUO_MANAGEMENT || [];
+const tabs = window.HAITUO_TABS || [];
+const channels = window.HAITUO_CHANNELS || [];
 const brand = (window.haituo && window.haituo.brand) || { name: '海拓商业版', version: '0.1.0' };
 
 document.title = brand.name;
@@ -22,19 +22,12 @@ const loginOnly = document.getElementById('login-only');
 const oauthBlock = document.getElementById('oauth-block');
 const forgotPassword = document.getElementById('forgot-password');
 const googleLogin = document.getElementById('google-login');
-const navServices = document.getElementById('nav-services');
-const navManagement = document.getElementById('nav-management');
-const mgmtSection = document.getElementById('mgmt-section');
+const topnav = document.getElementById('topnav');
 const content = document.getElementById('content');
 const userAvatar = document.getElementById('user-avatar');
 const userName = document.getElementById('user-name');
 const roleBadge = document.getElementById('role-badge');
 const logoutBtn = document.getElementById('logout');
-const aboutBtn = document.getElementById('about-btn');
-const aboutModal = document.getElementById('about-modal');
-const aboutClose = document.getElementById('about-close');
-
-document.getElementById('about-version').textContent = brand.version || '0.1.0';
 
 let mode = 'login'; // 'login' | 'register'
 
@@ -76,70 +69,55 @@ function showApp(user) {
   roleBadge.dataset.role = role;
   setAuthMessage('');
   content.innerHTML = '';
-  renderServices();
-  renderManagement(role);
+  renderTabs(role);
 }
 
-function addNavButton(navContainer, entry, isActive) {
+const TAB_PANEL_BUILDERS = {
+  chat: buildChatPanel,
+  translate: buildTranslatePanel,
+  recharge: buildRechargePanel,
+  about: buildAboutPanel
+};
+
+function addTopTab(entry, isActive) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'nav-item' + (isActive ? ' is-active' : '');
-  btn.dataset.service = entry.id;
-  btn.innerHTML = `<span class="nav-icon">${escapeHtml(entry.icon)}</span><span>${escapeHtml(entry.name)}</span>`;
+  btn.className = 'top-tab' + (isActive ? ' is-active' : '');
+  btn.dataset.tab = entry.id;
+  btn.innerHTML = `<span class="top-tab-icon">${escapeHtml(entry.icon)}</span><span>${escapeHtml(entry.name)}</span>`;
   btn.addEventListener('click', () => selectEntry(entry.id));
-  navContainer.appendChild(btn);
-  return btn;
+  topnav.appendChild(btn);
 }
 
-function buildPlaceholderPanel(svc) {
-  const frag = document.createDocumentFragment();
-  const h = document.createElement('h1');
-  h.textContent = svc.name;
-  frag.appendChild(h);
-  const wip = document.createElement('span');
-  wip.className = 'wip';
-  wip.textContent = '开发中';
-  frag.appendChild(wip);
-  const p = document.createElement('p');
-  p.className = 'placeholder';
-  p.textContent = svc.desc;
-  frag.appendChild(p);
-  return frag;
+function buildManagementPanel(entry) {
+  const page = document.createElement('div');
+  page.className = 'mgmt-page';
+  page.innerHTML =
+    '<div class="page-head"><h1>' + escapeHtml(entry.name) + '</h1>' +
+    '<p>' + escapeHtml(entry.desc) + '</p></div>';
+  page.appendChild(entry.id === 'agent-manage' ? buildAgentManagePanel() : buildMyUsersPanel());
+  return page;
 }
 
-function renderServices() {
-  navServices.innerHTML = '';
-  services.forEach((svc, i) => {
-    addNavButton(navServices, svc, i === 0);
+function buildPanelContent(entry) {
+  const build = TAB_PANEL_BUILDERS[entry.id];
+  return build ? build() : buildManagementPanel(entry);
+}
+
+function renderTabs(role) {
+  topnav.innerHTML = '';
+  const visible = tabs.filter((t) => !t.roles || t.roles.includes(role));
+
+  visible.forEach((entry, i) => {
+    addTopTab(entry, i === 0);
     const panel = document.createElement('section');
     panel.className = 'panel' + (i === 0 ? ' is-active' : '');
-    panel.dataset.panel = svc.id;
-    if (svc.id === 'chat') panel.appendChild(buildChatPanel());
-    else if (svc.id === 'translate') panel.appendChild(buildTranslatePanel());
-    else if (svc.id === 'recharge') panel.appendChild(buildRechargePanel());
-    else panel.appendChild(buildPlaceholderPanel(svc));
+    panel.dataset.panel = entry.id;
+    panel.appendChild(buildPanelContent(entry));
     content.appendChild(panel);
   });
-  syncContentMode(services[0] ? services[0].id : '');
-}
 
-function renderManagement(role) {
-  navManagement.innerHTML = '';
-  const visible = management.filter((m) => (m.roles || []).includes(role));
-  mgmtSection.hidden = visible.length === 0;
-
-  visible.forEach((m) => {
-    addNavButton(navManagement, m, false);
-
-    const panel = document.createElement('section');
-    panel.className = 'panel';
-    panel.dataset.panel = m.id;
-    const h = document.createElement('h1');
-    h.textContent = m.name;
-    panel.appendChild(h);
-    panel.appendChild(m.id === 'agent-manage' ? buildAgentManagePanel() : buildMyUsersPanel());
-    content.appendChild(panel);
-  });
+  syncContentMode(visible[0] ? visible[0].id : '');
 }
 
 function syncContentMode(activeId) {
@@ -147,13 +125,14 @@ function syncContentMode(activeId) {
 }
 
 function selectEntry(id) {
-  document.querySelectorAll('.nav-item').forEach((n) =>
-    n.classList.toggle('is-active', n.dataset.service === id)
+  document.querySelectorAll('.top-tab').forEach((n) =>
+    n.classList.toggle('is-active', n.dataset.tab === id)
   );
   document.querySelectorAll('.panel').forEach((p) =>
     p.classList.toggle('is-active', p.dataset.panel === id)
   );
   syncContentMode(id);
+  content.scrollTop = 0;
 }
 
 // ---------- 会话占位 ----------
@@ -266,15 +245,54 @@ function copyText(text) {
 
 const SEARCH_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>';
 
+const CHAT_CONVERSATIONS = [
+  {
+    id: 'lea', name: 'Léa Martin', avatar: 'LM', channel: 'whatsapp',
+    last: 'Parfait, merci beaucoup !', time: '09:48', unread: 1, live: true
+  },
+  {
+    id: 'chen', name: '陈伟', avatar: '陈', channel: 'telegram',
+    last: '文件已经发到你的邮箱', time: '昨天', unread: 0, live: false
+  },
+  {
+    id: 'group', name: '法国批发群', avatar: '群', channel: 'whatsapp',
+    last: '新款报价单已更新', time: '昨天', unread: 3, live: false
+  },
+  {
+    id: 'sophie', name: 'Sophie Bernard', avatar: 'SB', channel: 'signal',
+    last: 'Merci pour le devis', time: '周一', unread: 0, live: false
+  },
+  {
+    id: 'new', name: '新客户咨询', avatar: '新', channel: 'whatsapp',
+    last: 'Bonjour, vous êtes disponible ?', time: '周一', unread: 0, live: false
+  }
+];
+
 function buildChatPanel() {
   const settings = loadChatSettings();
   const now = new Date();
-  const shell = document.createElement('div');
-  shell.className = 'chat-shell';
+  const page = document.createElement('div');
+  page.className = 'chat-page';
+
+  const rail = document.createElement('aside');
+  rail.className = 'chat-rail';
+  rail.innerHTML =
+    '<div class="rail-channels">' +
+      '<div class="rail-label">渠道</div>' +
+      '<div class="channel-strip"></div>' +
+    '</div>' +
+    '<div class="rail-head"><span>会话</span><span class="rail-count">0</span></div>' +
+    '<div class="conversation-list"></div>' +
+    '<div class="rail-foot"><span class="online-dot"></span>演示账号 · 数据隔离</div>';
+  page.appendChild(rail);
+
+  const stage = document.createElement('div');
+  stage.className = 'chat-stage';
+  page.appendChild(stage);
 
   const main = document.createElement('section');
   main.className = 'chat-main';
-  shell.appendChild(main);
+  stage.appendChild(main);
 
   const head = document.createElement('header');
   head.className = 'chat-head';
@@ -310,9 +328,19 @@ function buildChatPanel() {
   list.className = 'chat-messages';
   body.appendChild(list);
 
+  const empty = document.createElement('div');
+  empty.className = 'chat-empty';
+  empty.innerHTML =
+    '<span class="chat-empty-icon"></span>' +
+    '<h2></h2>' +
+    '<p></p>' +
+    '<button type="button" class="chat-empty-back">返回 WhatsApp 演示</button>';
+  empty.hidden = true;
+  stage.appendChild(empty);
+
   const toast = document.createElement('div');
   toast.className = 'chat-toast';
-  shell.appendChild(toast);
+  stage.appendChild(toast);
   let toastTimer = null;
   function showToast(text) {
     toast.textContent = text;
@@ -320,6 +348,118 @@ function buildChatPanel() {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('is-show'), 1800);
   }
+
+  let activeChannel = 'whatsapp';
+  let activeConversation = 'lea';
+  const strip = rail.querySelector('.channel-strip');
+  const convList = rail.querySelector('.conversation-list');
+  const convCount = rail.querySelector('.rail-count');
+
+  function renderChannels() {
+    strip.innerHTML = '';
+    channels.forEach((ch) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'channel-btn' + (ch.id === activeChannel ? ' is-active' : '');
+      btn.dataset.channel = ch.id;
+      btn.title = ch.name + ' · ' + ch.desc;
+      btn.innerHTML =
+        '<span class="channel-icon">' + escapeHtml(ch.icon) + '</span>' +
+        '<span class="channel-name">' + escapeHtml(ch.name) + '</span>';
+      btn.addEventListener('click', () => selectChannel(ch.id));
+      strip.appendChild(btn);
+    });
+  }
+
+  function renderConversations() {
+    const items = activeChannel === 'more'
+      ? []
+      : CHAT_CONVERSATIONS.filter((c) => c.channel === activeChannel);
+    convCount.textContent = String(items.length);
+    convList.innerHTML = '';
+
+    if (items.length === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'conv-empty';
+      hint.textContent = activeChannel === 'more' ? '新渠道接入后，会话会显示在这里' : '该渠道暂无演示会话';
+      convList.appendChild(hint);
+      return;
+    }
+
+    items.forEach((conv) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'conv' + (conv.id === activeConversation ? ' is-active' : '');
+      btn.dataset.conv = conv.id;
+      btn.innerHTML =
+        '<span class="conv-avatar">' + escapeHtml(conv.avatar) + '</span>' +
+        '<span class="conv-main">' +
+          '<span class="conv-top"><span class="conv-name">' + escapeHtml(conv.name) + '</span>' +
+          '<span class="conv-time">' + escapeHtml(conv.time) + '</span></span>' +
+          '<span class="conv-last">' + escapeHtml(conv.last) + '</span>' +
+        '</span>' +
+        (conv.unread ? '<span class="conv-badge">' + conv.unread + '</span>' : '');
+      btn.addEventListener('click', () => openConversation(conv));
+      convList.appendChild(btn);
+    });
+  }
+
+  function showChatStage() {
+    main.hidden = false;
+    empty.hidden = true;
+  }
+
+  function showEmptyStage(icon, title, text) {
+    main.hidden = true;
+    empty.hidden = false;
+    empty.querySelector('.chat-empty-icon').textContent = icon;
+    empty.querySelector('h2').textContent = title;
+    empty.querySelector('p').textContent = text;
+  }
+
+  function openConversation(conv) {
+    activeConversation = conv.id;
+    renderConversations();
+    if (conv.live) {
+      showChatStage();
+      return;
+    }
+    const ch = channels.find((c) => c.id === conv.channel);
+    showEmptyStage(
+      ch ? ch.icon : '聊',
+      conv.name,
+      ch && ch.id !== 'whatsapp'
+        ? ch.name + ' 渠道接入后，消息会实时显示在这里。'
+        : '该会话为演示占位，消息数据尚未接入。'
+    );
+  }
+
+  function selectChannel(channelId) {
+    activeChannel = channelId;
+    const ch = channels.find((c) => c.id === channelId);
+    const items = channelId === 'more'
+      ? []
+      : CHAT_CONVERSATIONS.filter((c) => c.channel === channelId);
+    renderChannels();
+
+    if (items.length === 0) {
+      activeConversation = '';
+      renderConversations();
+      showEmptyStage(
+        ch ? ch.icon : '聊',
+        channelId === 'more' ? '扩展新渠道' : (ch ? ch.name + ' 暂无会话' : '暂无会话'),
+        '平台外壳已就绪，新渠道会以独立数据分区接入，会话与翻译设置保持一致。'
+      );
+      return;
+    }
+
+    activeConversation = items[0].id;
+    openConversation(items[0]);
+  }
+
+  empty.querySelector('.chat-empty-back').addEventListener('click', () => selectChannel('whatsapp'));
+  renderChannels();
+  renderConversations();
 
   const msgRows = [];
 
@@ -503,7 +643,7 @@ function buildChatPanel() {
     '</div>' +
     '<p class="t-note">演示语种：中文 / English / Français</p>' +
     '<div class="t-side-foot"><span class="online-dot"></span>WhatsApp · 账号数据隔离</div>';
-  shell.appendChild(side);
+  page.appendChild(side);
 
   const roleOptions = side.querySelector('.role-options');
   const currentRoleEl = side.querySelector('.role-current');
@@ -550,7 +690,9 @@ function buildChatPanel() {
     showToast('目标语言已切换为 ' + e.target.options[e.target.selectedIndex].text);
   });
 
-  return shell;
+  requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; });
+
+  return page;
 }
 
 // ---------- 翻译首页 ----------
@@ -755,6 +897,47 @@ function buildRechargePanel() {
   return wrap;
 }
 
+// ---------- 关于 ----------
+
+function buildAboutPanel() {
+  const wrap = document.createElement('div');
+  wrap.className = 'about-page';
+  wrap.innerHTML =
+    '<div class="about-hero">' +
+      '<span class="about-logo">' + escapeHtml(brand.name.charAt(0)) + '</span>' +
+      '<div class="about-hero-copy">' +
+        '<h1>' + escapeHtml(brand.name) + '</h1>' +
+        '<p>版本 ' + escapeHtml(brand.version || '0.1.0') + ' · 多语言翻译 · 多渠道消息聚合 · 代理分销</p>' +
+      '</div>' +
+      '<span class="about-pill">商业版</span>' +
+    '</div>' +
+    '<div class="about-grid">' +
+      '<section class="about-card">' +
+        '<h3>产品定位</h3>' +
+        '<p>平台自身作为主程序，翻译与账号计费是核心能力；WhatsApp、Telegram、Signal 等消息渠道作为可插拔服务逐步接入。</p>' +
+      '</section>' +
+      '<section class="about-card">' +
+        '<h3>当前进度</h3>' +
+        '<ul>' +
+          '<li>平台外壳与顶部导航已就绪</li>' +
+          '<li>Supabase 邮箱账号与角色体系已接入</li>' +
+          '<li>聊天为演示数据，真实渠道接入在 P1</li>' +
+          '<li>计费表结构已准备，运行时扣费待接入</li>' +
+        '</ul>' +
+      '</section>' +
+      '<section class="about-card">' +
+        '<h3>账号与安全</h3>' +
+        '<p>账号与数据由 Supabase 安全存储，渲染层不接触密钥；真实凭据只保存在本机 .env 中，不进入仓库。</p>' +
+      '</section>' +
+      '<section class="about-card">' +
+        '<h3>计费与分销</h3>' +
+        '<p>按原文字符数扣费，支持免费额度、付费余额、翻译池分配与起止有效期；代理直客 / 间客分成按比例自动计入。</p>' +
+      '</section>' +
+    '</div>' +
+    '<p class="about-foot">当前为商业版开发预览 · 演示数据不会发送到真实渠道 · 品牌名称由 package.json 单点配置</p>';
+  return wrap;
+}
+
 // ---------- 管理面板 ----------
 
 function mgmtRow(email, roleLabel, role, extra, actionBtn) {
@@ -869,15 +1052,6 @@ function buildMyUsersPanel() {
 
 tabLogin.addEventListener('click', () => setMode('login'));
 tabRegister.addEventListener('click', () => setMode('register'));
-
-aboutBtn.addEventListener('click', () => { aboutModal.hidden = false; });
-aboutClose.addEventListener('click', () => { aboutModal.hidden = true; });
-aboutModal.addEventListener('click', (e) => {
-  if (e.target === aboutModal) aboutModal.hidden = true;
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') aboutModal.hidden = true;
-});
 
 forgotPassword.addEventListener('click', (e) => {
   e.preventDefault();
