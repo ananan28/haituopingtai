@@ -1,24 +1,19 @@
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
-const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 
-const CONFIG_FILE = path.join(__dirname, 'supabase.config.json');
+// 加载 .env（真实 key 放 .env，绝不提交到 git）
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 let client = null;
 let configured = false;
 
-// 读取配置：优先环境变量，其次 supabase.config.json。
-// 不要把真实 key 写进源码，填了真实值的配置文件也不要提交到 git（见 .gitignore）。
+// 读取配置：来自环境变量（含 .env 里声明的）
 function loadConfig() {
-  let fromFile = {};
-  try {
-    fromFile = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch {}
   return {
-    url: (process.env.SUPABASE_URL || fromFile.supabaseUrl || '').trim(),
-    anonKey: (process.env.SUPABASE_ANON_KEY || fromFile.supabaseAnonKey || '').trim()
+    url: (process.env.SUPABASE_URL || '').trim(),
+    anonKey: (process.env.SUPABASE_ANON_KEY || '').trim()
   };
 }
 
@@ -87,7 +82,7 @@ function getClient() {
 }
 
 const NOT_CONFIGURED =
-  '未配置 Supabase：请复制 supabase.config.example.json 为 supabase.config.json 并填写（或设置环境变量 SUPABASE_URL / SUPABASE_ANON_KEY）';
+  '未配置 Supabase：请复制 .env.example 为 .env 并填写 SUPABASE_URL / SUPABASE_ANON_KEY';
 
 // 读取用户角色：权威来源是 public.profiles.role，读不到时兜底 'user'（最小权限）
 // 加 5s 超时，避免网络异常时拖住登录

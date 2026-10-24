@@ -1,6 +1,6 @@
 const auth = require('./auth');
 
-const NOT_CONFIGURED = '未配置 Supabase：请在 supabase.config.json 或环境变量中填写配置';
+const NOT_CONFIGURED = '未配置 Supabase：请在 .env 或环境变量中填写配置';
 
 function client() {
   return auth.getClient();

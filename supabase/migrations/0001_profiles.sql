@@ -10,6 +10,7 @@ create type public.user_role as enum ('owner', 'agent', 'user');
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text not null,
+  username text,
   role public.user_role not null default 'user',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
