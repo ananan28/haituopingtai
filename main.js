@@ -1,9 +1,14 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const pkg = require('./package.json');
 const auth = require('./auth');
 const { registerIpc } = require('./ipc');
 
-app.setName('海拓');
+// 品牌唯一来源：package.json 的 productName
+const BRAND_NAME = pkg.productName || pkg.name;
+const BRAND_VERSION = pkg.version;
+
+app.setName(BRAND_NAME);
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -11,12 +16,16 @@ function createWindow() {
     height: 720,
     minWidth: 800,
     minHeight: 560,
-    title: '海拓',
+    title: BRAND_NAME,
     backgroundColor: '#16181d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      additionalArguments: [
+        '--haituo-brand=' + encodeURIComponent(BRAND_NAME),
+        '--haituo-version=' + encodeURIComponent(BRAND_VERSION)
+      ]
     }
   });
 
@@ -27,7 +36,7 @@ function createWindow() {
 app.whenReady().then(() => {
   auth.init(path.join(app.getPath('userData'), 'session.json'));
   registerIpc();
-  console.log('[海拓] Supabase 已配置:', auth.isConfigured(), '| 会话文件:', path.join(app.getPath('userData'), 'session.json'));
+  console.log('[' + BRAND_NAME + '] Supabase 已配置:', auth.isConfigured(), '| 会话文件:', path.join(app.getPath('userData'), 'session.json'));
 
   // 认证状态变化（登录 / 退出 / token 失效）转发给渲染层
   auth.onAuthStateChange((event, email) => {

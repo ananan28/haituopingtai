@@ -1,7 +1,8 @@
 {
   "name": "haituo-platform",
+  "productName": "海拓商业版",
   "version": "0.1.0",
-  "description": "海拓平台 - 独立翻译/账号计费平台空壳",
+  "description": "海拓商业版 - 多语言翻译与多渠道消息聚合平台",
   "main": "main.js",
   "scripts": {
     "start": "electron ."

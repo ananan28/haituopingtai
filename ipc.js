@@ -1,4 +1,4 @@
-const { ipcMain } = require('electron');
+const { ipcMain, clipboard } = require('electron');
 const auth = require('./auth');
 const distribution = require('./distribution');
 
@@ -26,6 +26,12 @@ function registerIpc() {
   handle('distribution:demoteAgent', (userId) => distribution.demoteAgent(userId));
   handle('distribution:assignAgent', (userEmail, agentEmail) => distribution.assignAgent(userEmail, agentEmail));
   handle('distribution:listMyUsers', () => distribution.listMyUsers());
+
+  // 系统剪贴板
+  handle('clipboard:write', (text) => {
+    clipboard.writeText(String(text ?? ''));
+    return { ok: true };
+  });
 }
 
 module.exports = { registerIpc };

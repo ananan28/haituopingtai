@@ -1,6 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function bootArg(prefix) {
+  const arg = process.argv.find((a) => a.startsWith(prefix));
+  return arg ? decodeURIComponent(arg.slice(prefix.length)) : '';
+}
+
+const brand = {
+  name: bootArg('--haituo-brand=') || '海拓商业版',
+  version: bootArg('--haituo-version=') || ''
+};
+
 contextBridge.exposeInMainWorld('haituo', {
+  brand,
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
     signUp: (email, password) => ipcRenderer.invoke('auth:signup', email, password),
@@ -19,5 +30,8 @@ contextBridge.exposeInMainWorld('haituo', {
     demoteAgent: (userId) => ipcRenderer.invoke('distribution:demoteAgent', userId),
     assignAgent: (userEmail, agentEmail) => ipcRenderer.invoke('distribution:assignAgent', userEmail, agentEmail),
     listMyUsers: () => ipcRenderer.invoke('distribution:listMyUsers')
+  },
+  clipboard: {
+    write: (text) => ipcRenderer.invoke('clipboard:write', text)
   }
 });
