@@ -81,6 +81,11 @@ function isConfigured() {
   return configured;
 }
 
+// 供其他模块（如 distribution.js）复用同一个 Supabase 客户端
+function getClient() {
+  return client;
+}
+
 const NOT_CONFIGURED =
   '未配置 Supabase：请复制 supabase.config.example.json 为 supabase.config.json 并填写（或设置环境变量 SUPABASE_URL / SUPABASE_ANON_KEY）';
 
@@ -112,7 +117,7 @@ async function signIn(email, password) {
   if (!client) return { ok: false, error: NOT_CONFIGURED };
   const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: error.message };
-  const role = data.user ? await fetchRole(client, data.user.id) : 'user';
+  const role = data.user ? await module.exports.fetchRole(client, data.user.id) : 'user';
   return { ok: true, user: { id: data.user.id, email: data.user.email, role } };
 }
 
@@ -128,7 +133,7 @@ async function getSession() {
   const { data, error } = await client.auth.getSession();
   if (error || !data.session || !data.session.user) return { ok: true, user: null };
   const u = data.session.user;
-  const role = await fetchRole(client, u.id);
+  const role = await module.exports.fetchRole(client, u.id);
   return { ok: true, user: { id: u.id, email: u.email, role } };
 }
 
@@ -139,4 +144,4 @@ function onAuthStateChange(cb) {
   });
 }
 
-module.exports = { init, isConfigured, loadConfig, signUp, signIn, signOut, getSession, onAuthStateChange };
+module.exports = { init, isConfigured, getClient, loadConfig, signUp, signIn, signOut, getSession, onAuthStateChange, fetchRole };

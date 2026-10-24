@@ -12,5 +12,12 @@ contextBridge.exposeInMainWorld('haituo', {
       ipcRenderer.on('auth:state', listener);
       return () => ipcRenderer.removeListener('auth:state', listener);
     }
+  },
+  distribution: {
+    listProfiles: () => ipcRenderer.invoke('distribution:listProfiles'),
+    promoteToAgent: (email, rate) => ipcRenderer.invoke('distribution:promoteToAgent', email, rate),
+    demoteAgent: (userId) => ipcRenderer.invoke('distribution:demoteAgent', userId),
+    assignAgent: (userEmail, agentEmail) => ipcRenderer.invoke('distribution:assignAgent', userEmail, agentEmail),
+    listMyUsers: () => ipcRenderer.invoke('distribution:listMyUsers')
   }
 });

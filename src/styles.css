@@ -359,3 +359,125 @@ button {
   line-height: 1.7;
   max-width: 560px;
 }
+
+/* ---------- 管理面板 ---------- */
+.mgmt-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.mgmt-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mgmt-form input {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  width: 190px;
+}
+
+.mgmt-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.mgmt-form button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mgmt-msg {
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+.mgmt-msg.is-ok {
+  color: var(--ok);
+}
+
+.mgmt-section-title {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 14px 0 8px;
+}
+
+.mgmt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 680px;
+  color: var(--text-dim);
+}
+
+.mgmt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.mgmt-email {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mgmt-extra {
+  color: var(--text-dim);
+}
+
+.mgmt-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-sidebar);
+  color: var(--text-dim);
+}
+
+.mgmt-tag[data-role="owner"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.mgmt-tag[data-role="agent"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.btn-mini {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-mini:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}

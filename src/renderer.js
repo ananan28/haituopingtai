@@ -59,7 +59,7 @@ function showApp(user) {
   renderManagement(role);
 }
 
-function addEntry(navContainer, entry, isActive) {
+function addNavButton(navContainer, entry, isActive) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'nav-item' + (isActive ? ' is-active' : '');
@@ -67,27 +67,45 @@ function addEntry(navContainer, entry, isActive) {
   btn.innerHTML = `<span class="nav-icon">${escapeHtml(entry.icon)}</span><span>${escapeHtml(entry.name)}</span>`;
   btn.addEventListener('click', () => selectEntry(entry.id));
   navContainer.appendChild(btn);
+  return btn;
+}
 
+function addServicePanel(svc, isActive) {
   const panel = document.createElement('section');
   panel.className = 'panel' + (isActive ? ' is-active' : '');
-  panel.dataset.panel = entry.id;
+  panel.dataset.panel = svc.id;
   panel.innerHTML =
-    `<h1>${escapeHtml(entry.name)}</h1>` +
+    `<h1>${escapeHtml(svc.name)}</h1>` +
     `<span class="wip">开发中</span>` +
-    `<p class="placeholder">${escapeHtml(entry.desc)}</p>`;
+    `<p class="placeholder">${escapeHtml(svc.desc)}</p>`;
   content.appendChild(panel);
 }
 
 function renderServices() {
   navServices.innerHTML = '';
-  services.forEach((svc, i) => addEntry(navServices, svc, i === 0));
+  services.forEach((svc, i) => {
+    addNavButton(navServices, svc, i === 0);
+    addServicePanel(svc, i === 0);
+  });
 }
 
 function renderManagement(role) {
   navManagement.innerHTML = '';
   const visible = management.filter((m) => (m.roles || []).includes(role));
   mgmtSection.hidden = visible.length === 0;
-  visible.forEach((m) => addEntry(navManagement, m, false));
+
+  visible.forEach((m) => {
+    addNavButton(navManagement, m, false);
+
+    const panel = document.createElement('section');
+    panel.className = 'panel';
+    panel.dataset.panel = m.id;
+    const h = document.createElement('h1');
+    h.textContent = m.name;
+    panel.appendChild(h);
+    panel.appendChild(m.id === 'agent-manage' ? buildAgentManagePanel() : buildMyUsersPanel());
+    content.appendChild(panel);
+  });
 }
 
 function selectEntry(id) {
@@ -98,6 +116,118 @@ function selectEntry(id) {
     p.classList.toggle('is-active', p.dataset.panel === id)
   );
 }
+
+// ---------- 管理面板 ----------
+
+function mgmtRow(email, roleLabel, role, extra, actionBtn) {
+  const row = document.createElement('div');
+  row.className = 'mgmt-row';
+  row.innerHTML = `<span class="mgmt-email">${escapeHtml(email)}</span>` +
+    `<span class="mgmt-tag" data-role="${escapeHtml(role)}">${escapeHtml(roleLabel)}</span>` +
+    (extra ? `<span class="mgmt-extra">${escapeHtml(extra)}</span>` : '');
+  if (actionBtn) row.appendChild(actionBtn);
+  return row;
+}
+
+function buildAgentManagePanel() {
+  const wrap = document.createElement('div');
+  const msg = document.createElement('div');
+  msg.className = 'mgmt-msg';
+  const list = document.createElement('div');
+  list.className = 'mgmt-list';
+
+  async function load() {
+    list.innerHTML = '';
+    const res = await window.haituo.distribution.listProfiles();
+    if (!res.ok) { list.textContent = res.error || '加载失败'; return; }
+    const profiles = res.profiles || [];
+    if (profiles.length === 0) { list.textContent = '暂无账号'; return; }
+    for (const p of profiles) {
+      const roleLabel = ROLE_LABELS[p.role] || p.role;
+      const extra = p.commission_rate != null ? '分成 ' + p.commission_rate + '%' : '';
+      let btn = null;
+      if (p.role === 'agent') {
+        btn = document.createElement('button');
+        btn.className = 'btn-mini';
+        btn.textContent = '降级';
+        btn.addEventListener('click', async () => {
+          const r = await window.haituo.distribution.demoteAgent(p.id);
+          msg.textContent = r.ok ? '已降级' : (r.error || '失败');
+          msg.classList.toggle('is-ok', !!r.ok);
+          load();
+        });
+      }
+      list.appendChild(mgmtRow(p.email, roleLabel, p.role, extra, btn));
+    }
+  }
+
+  const promoteForm = document.createElement('form');
+  promoteForm.className = 'mgmt-form';
+  promoteForm.innerHTML =
+    '<label>邮箱 <input name="email" type="email" placeholder="user@example.com" /></label>' +
+    '<label>分成 % <input name="rate" type="number" min="0" max="100" step="0.1" placeholder="30" /></label>' +
+    '<button type="submit">设为代理</button>';
+  promoteForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = '';
+    msg.classList.remove('is-ok');
+    const r = await window.haituo.distribution.promoteToAgent(promoteForm.email.value, promoteForm.rate.value);
+    msg.textContent = r.ok ? '已设为代理' : (r.error || '失败');
+    msg.classList.toggle('is-ok', !!r.ok);
+    load();
+  });
+
+  const assignForm = document.createElement('form');
+  assignForm.className = 'mgmt-form';
+  assignForm.innerHTML =
+    '<label>用户邮箱 <input name="userEmail" type="email" placeholder="user@example.com" /></label>' +
+    '<label>代理邮箱 <input name="agentEmail" type="email" placeholder="agent@example.com" /></label>' +
+    '<button type="submit">分配到代理</button>';
+  assignForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = '';
+    msg.classList.remove('is-ok');
+    const r = await window.haituo.distribution.assignAgent(assignForm.userEmail.value, assignForm.agentEmail.value);
+    msg.textContent = r.ok ? '已分配' : (r.error || '失败');
+    msg.classList.toggle('is-ok', !!r.ok);
+    load();
+  });
+
+  const title = document.createElement('div');
+  title.className = 'mgmt-section-title';
+  title.textContent = '所有账号';
+
+  wrap.appendChild(promoteForm);
+  wrap.appendChild(assignForm);
+  wrap.appendChild(msg);
+  wrap.appendChild(title);
+  wrap.appendChild(list);
+  load();
+  return wrap;
+}
+
+function buildMyUsersPanel() {
+  const wrap = document.createElement('div');
+  const list = document.createElement('div');
+  list.className = 'mgmt-list';
+
+  async function load() {
+    list.innerHTML = '';
+    const res = await window.haituo.distribution.listMyUsers();
+    if (!res.ok) { list.textContent = res.error || '加载失败'; return; }
+    const users = res.users || [];
+    if (users.length === 0) { list.textContent = '名下暂无用户'; return; }
+    for (const u of users) {
+      list.appendChild(mgmtRow(u.email, '', '', '', null));
+    }
+  }
+
+  wrap.appendChild(list);
+  load();
+  return wrap;
+}
+
+// ---------- 事件 ----------
 
 tabLogin.addEventListener('click', () => setMode('login'));
 tabRegister.addEventListener('click', () => setMode('register'));

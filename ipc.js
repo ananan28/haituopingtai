@@ -1,7 +1,8 @@
 const { ipcMain } = require('electron');
 const auth = require('./auth');
+const distribution = require('./distribution');
 
-// 账号 IPC 通道：把渲染层请求转发给 Supabase Auth 模块
+// IPC 通道：把渲染层请求转发给对应模块
 function registerIpc() {
   const handle = (channel, fn) =>
     ipcMain.handle(channel, async (_e, ...args) => {
@@ -12,11 +13,19 @@ function registerIpc() {
       }
     });
 
+  // 账号
   handle('auth:status', () => ({ configured: auth.isConfigured() }));
   handle('auth:signup', (email, password) => auth.signUp(email, password));
   handle('auth:signin', (email, password) => auth.signIn(email, password));
   handle('auth:signout', () => auth.signOut());
   handle('auth:session', () => auth.getSession());
+
+  // 分销
+  handle('distribution:listProfiles', () => distribution.listProfiles());
+  handle('distribution:promoteToAgent', (email, rate) => distribution.promoteToAgent(email, rate));
+  handle('distribution:demoteAgent', (userId) => distribution.demoteAgent(userId));
+  handle('distribution:assignAgent', (userEmail, agentEmail) => distribution.assignAgent(userEmail, agentEmail));
+  handle('distribution:listMyUsers', () => distribution.listMyUsers());
 }
 
 module.exports = { registerIpc };
