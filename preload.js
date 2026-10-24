@@ -33,5 +33,10 @@ contextBridge.exposeInMainWorld('haituo', {
   },
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text)
+  },
+  windowControls: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+    close: () => ipcRenderer.invoke('window:close')
   }
 });

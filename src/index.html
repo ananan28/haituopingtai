@@ -5,10 +5,18 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
   <title>海拓商业版</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="workbench.css" />
 </head>
 <body>
   <!-- 认证视图：未登录时显示 -->
   <div id="auth-view" class="view auth-view is-active">
+    <div class="auth-windowbar">
+      <div class="window-controls">
+        <button id="auth-win-min" class="win-btn" type="button" title="最小化" aria-label="最小化"></button>
+        <button id="auth-win-max" class="win-btn" type="button" title="最大化" aria-label="最大化"></button>
+        <button id="auth-win-close" class="win-btn win-close" type="button" title="关闭" aria-label="关闭"></button>
+      </div>
+    </div>
     <div class="auth-card">
       <div class="auth-brand">
         <span class="brand-name" data-brand>海拓商业版</span>
@@ -53,22 +61,302 @@
 
   <!-- 主界面视图：登录后显示 -->
   <div id="app-view" class="view app">
-    <header class="topbar">
-      <div class="topbar-brand">
-        <span class="brand-name" data-brand>海拓商业版</span>
-        <span class="brand-sub">平台</span>
-      </div>
-      <nav id="topnav" class="topnav" aria-label="主导航"></nav>
-      <div class="topbar-actions">
-        <div class="user-chip">
-          <span id="user-avatar" class="user-avatar">?</span>
-          <span id="user-name" class="user-name"></span>
-          <span id="role-badge" class="role-badge">用户</span>
+    <header id="titlebar" class="titlebar">
+      <div class="tb-brand">
+        <span class="tb-logo">海</span>
+        <div class="tb-brand-copy">
+          <strong data-brand>海拓商业版</strong>
+          <span class="tb-version">v<span id="tb-version">0.1.0</span> · 商业版</span>
         </div>
-        <button id="logout" class="logout-btn" type="button">退出登录</button>
+      </div>
+      <div id="title-tools" class="tb-tools" aria-label="工具栏"></div>
+      <div class="window-controls">
+        <button id="win-min" class="win-btn" type="button" title="最小化" aria-label="最小化"></button>
+        <button id="win-max" class="win-btn" type="button" title="最大化" aria-label="最大化"></button>
+        <button id="win-close" class="win-btn win-close" type="button" title="关闭" aria-label="关闭"></button>
       </div>
     </header>
-    <main id="content" class="content"></main>
+
+    <div id="workspace" class="workspace">
+      <aside id="acct-rail" class="acct-rail" aria-label="账号列表">
+        <div class="acct-rail-head">
+          <span>账号 <b id="rail-count">0</b></span>
+          <button id="rail-add" class="mini-add" type="button" title="添加渠道">+</button>
+        </div>
+        <div id="rail-accounts" class="rail-accounts"></div>
+        <div id="rail-features" class="rail-features" aria-label="功能"></div>
+      </aside>
+
+      <div class="main-col">
+        <div id="acct-bar" class="acct-bar">
+          <button id="acct-add" class="acct-add" type="button" title="添加渠道账号">
+            <span class="acct-add-plus">+</span>
+            <span class="acct-add-text">添加渠道</span>
+          </button>
+          <div id="acct-chips" class="acct-chips" role="tablist" aria-label="渠道账号"></div>
+          <div class="acct-bar-right">
+            <nav id="page-tabs" class="page-tabs" aria-label="页面"></nav>
+            <span class="bar-sep"></span>
+            <button id="refresh-btn" class="bar-icon" type="button" title="刷新当前服务"></button>
+            <div id="user-menu-wrap" class="user-menu-wrap">
+              <button id="user-trigger" class="user-trigger" type="button" aria-haspopup="menu">
+                <span id="user-avatar" class="user-avatar">?</span>
+                <span class="user-copy">
+                  <strong id="user-name"></strong>
+                  <span id="role-badge" class="role-badge">用户</span>
+                </span>
+                <span class="chev">⌄</span>
+              </button>
+              <div id="user-menu" class="user-menu" role="menu" hidden></div>
+            </div>
+          </div>
+        </div>
+        <main id="content" class="content"></main>
+      </div>
+
+      <aside id="fx-panel" class="fx-panel" aria-label="功能面板">
+        <div class="fx-panel-inner">
+          <header class="fx-panel-head">
+            <div>
+              <span id="fx-panel-kicker" class="fx-panel-kicker">工具</span>
+              <h2 id="fx-panel-title">快捷回复</h2>
+            </div>
+            <button id="fx-panel-close" class="panel-close" type="button" title="收起面板">×</button>
+          </header>
+          <div id="fx-panel-body" class="fx-panel-body"></div>
+        </div>
+      </aside>
+
+      <aside class="fx-rail" aria-label="快捷功能栏">
+        <div id="fx-rail-top" class="fx-rail-top"></div>
+        <div class="fx-rail-bottom">
+          <button id="fx-manage" class="fx-rail-btn" type="button" title="侧栏按钮管理"></button>
+        </div>
+      </aside>
+
+      <div id="dock" class="dock">
+        <button id="mode-toggle" class="dock-btn" type="button" title="切换水平 / 垂直布局"></button>
+        <button id="collapse-btn" class="dock-btn" type="button" title="收纳快捷功能栏"></button>
+      </div>
+
+      <button id="fx-restore" class="fx-restore" type="button" title="展开功能栏" hidden></button>
+
+      <button id="float-ball" class="float-ball" type="button" title="在线客服">
+        <span class="float-icon"></span>
+        <span id="float-badge" class="float-badge">1</span>
+      </button>
+
+      <div id="fx-manager" class="fx-manager" hidden></div>
+      <div id="context-menu" class="context-menu" role="menu" hidden></div>
+    </div>
+  </div>
+
+  <!-- 渠道目录 -->
+  <div id="channel-catalog" class="modal-backdrop" hidden>
+    <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="catalog-title">
+      <header class="modal-head">
+        <div>
+          <span class="modal-kicker">添加渠道</span>
+          <h2 id="catalog-title">选择要接入的服务</h2>
+        </div>
+        <button class="modal-close" data-close="channel-catalog" type="button" title="关闭">×</button>
+      </header>
+      <div class="catalog-search">
+        <span class="catalog-search-icon"></span>
+        <input id="catalog-search" type="search" placeholder="搜索渠道，例如 Telegram、WhatsApp…" autocomplete="off" />
+        <span id="catalog-count" class="catalog-count"></span>
+      </div>
+      <div id="catalog-grid" class="catalog-grid"></div>
+      <footer class="modal-foot">
+        <span>端口级隔离 · 每个账号独立 Cookie、指纹与会话分区</span>
+        <button class="hp-ghost" data-close="channel-catalog" type="button">取消</button>
+      </footer>
+    </section>
+  </div>
+
+  <!-- 渠道端口配置 -->
+  <div id="channel-config" class="modal-backdrop" hidden>
+    <section class="modal modal-mid" role="dialog" aria-modal="true" aria-labelledby="cfg-title">
+      <header class="modal-head">
+        <div class="cfg-head-main">
+          <span id="cfg-channel-icon" class="ch-tile cfg-icon">T</span>
+          <div>
+            <span class="modal-kicker">端口配置</span>
+            <h2 id="cfg-title">新增 Telegram 账号</h2>
+          </div>
+        </div>
+        <button class="modal-close" data-close="channel-config" type="button" title="关闭">×</button>
+      </header>
+      <form id="channel-form" class="config-form">
+        <div class="config-body">
+          <div class="form-grid-2">
+            <label class="cfg-label">账号名称
+              <input id="cfg-name" type="text" maxlength="24" placeholder="例如：法国批发 01" />
+            </label>
+            <label class="cfg-label">生成数量
+              <input id="cfg-count" type="number" min="1" max="20" value="1" />
+            </label>
+          </div>
+
+          <div class="cfg-section">
+            <div class="cfg-section-title">翻译</div>
+            <label class="hp-toggle">
+              <span class="hp-toggle-copy"><strong>发送回翻</strong><small>发送前翻译成客户语言</small></span>
+              <input id="cfg-send-tr" type="checkbox" checked />
+              <span class="hp-switch"></span>
+            </label>
+            <label class="hp-toggle">
+              <span class="hp-toggle-copy"><strong>接收回翻</strong><small>收到消息自动翻译成中文</small></span>
+              <input id="cfg-recv-tr" type="checkbox" checked />
+              <span class="hp-switch"></span>
+            </label>
+            <label class="hp-toggle">
+              <span class="hp-toggle-copy"><strong>群组回翻</strong><small>群聊消息同样自动翻译</small></span>
+              <input id="cfg-group-tr" type="checkbox" />
+              <span class="hp-switch"></span>
+            </label>
+          </div>
+
+          <div class="cfg-section">
+            <div class="cfg-section-title">指纹保护</div>
+            <label class="hp-toggle">
+              <span class="hp-toggle-copy"><strong>启用浏览器级指纹</strong><small>每账号独立 WebRTC / Canvas / 设备名</small></span>
+              <input id="cfg-fingerprint" type="checkbox" checked />
+              <span class="hp-switch"></span>
+            </label>
+            <div class="form-grid-2 cfg-fp-fields">
+              <label class="cfg-label">地区
+                <select id="cfg-region">
+                  <option>法国</option>
+                  <option>德国</option>
+                  <option>美国</option>
+                  <option>英国</option>
+                  <option>日本</option>
+                  <option>东南亚</option>
+                </select>
+              </label>
+              <label class="cfg-label">语言
+                <select id="cfg-lang">
+                  <option>fr-FR</option>
+                  <option>de-DE</option>
+                  <option>en-US</option>
+                  <option>ja-JP</option>
+                </select>
+              </label>
+            </div>
+            <label class="cfg-label">浏览器版本
+              <select id="cfg-browser">
+                <option>Chrome 135 · Windows 11</option>
+                <option>Chrome 131 · Windows 10</option>
+                <option>Chrome 128 · macOS 14</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="cfg-section">
+            <div class="cfg-section-title">代理与登录</div>
+            <div class="form-grid-2">
+              <label class="cfg-label">代理设置
+                <select id="cfg-proxy-mode">
+                  <option>直连</option>
+                  <option>HTTP 代理</option>
+                  <option>SOCKS5 代理</option>
+                </select>
+              </label>
+              <label class="cfg-label">代理地址
+                <input id="cfg-proxy" type="text" placeholder="host:port（可选）" />
+              </label>
+            </div>
+            <label class="hp-toggle">
+              <span class="hp-toggle-copy"><strong>Cookie 直接登录</strong><small>已有登录态时跳过扫码</small></span>
+              <input id="cfg-cookie" type="checkbox" />
+              <span class="hp-switch"></span>
+            </label>
+          </div>
+
+          <div class="cfg-note">保存后会在顶部生成账号 chip，并打开该账号的内嵌登录页。演示阶段不连接真实渠道。</div>
+        </div>
+        <footer class="modal-foot">
+          <span id="cfg-partition-hint">将分配独立 session partition</span>
+          <div class="modal-foot-actions">
+            <button class="hp-ghost" data-close="channel-config" type="button">取消</button>
+            <button class="hp-primary" type="submit">保存并登录</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <!-- 编辑账号 -->
+  <div id="account-edit" class="modal-backdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+      <header class="modal-head">
+        <div>
+          <span class="modal-kicker">账号</span>
+          <h2 id="edit-title">编辑备注 / 头像</h2>
+        </div>
+        <button class="modal-close" data-close="account-edit" type="button" title="关闭">×</button>
+      </header>
+      <form id="edit-form" class="config-form">
+        <div class="config-body">
+          <div class="edit-preview">
+            <span id="edit-avatar-preview" class="ch-tile edit-avatar">W</span>
+            <div>
+              <strong id="edit-name-preview">账号名称</strong>
+              <small id="edit-sub-preview">渠道 · 分区</small>
+            </div>
+          </div>
+          <label class="cfg-label">备注名称
+            <input id="edit-name" type="text" maxlength="24" />
+          </label>
+          <label class="cfg-label">头像文字（1–2 个字符）
+            <input id="edit-avatar" type="text" maxlength="2" />
+          </label>
+        </div>
+        <footer class="modal-foot">
+          <span>修改仅影响本地展示</span>
+          <div class="modal-foot-actions">
+            <button class="hp-ghost" data-close="account-edit" type="button">取消</button>
+            <button class="hp-primary" type="submit">保存</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <!-- 配额 -->
+  <div id="quota-modal" class="modal-backdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="quota-title">
+      <header class="modal-head">
+        <div>
+          <span class="modal-kicker">翻译额度</span>
+          <h2 id="quota-title">配额查看</h2>
+        </div>
+        <button class="modal-close" data-close="quota-modal" type="button" title="关闭">×</button>
+      </header>
+      <div id="quota-body" class="modal-body"></div>
+      <footer class="modal-foot">
+        <span>字符余额与用量为演示数据</span>
+        <div class="modal-foot-actions">
+          <button class="hp-ghost" data-close="quota-modal" type="button">关闭</button>
+          <button id="quota-recharge" class="hp-primary" type="button">去充值</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+
+  <!-- 通用信息弹层（代理管理 / 我的用户 / 关于） -->
+  <div id="sheet-modal" class="modal-backdrop" hidden>
+    <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <header class="modal-head">
+        <div>
+          <span class="modal-kicker">海拓商业版</span>
+          <h2 id="sheet-title">信息</h2>
+        </div>
+        <button class="modal-close" data-close="sheet-modal" type="button" title="关闭">×</button>
+      </header>
+      <div id="sheet-body" class="modal-body sheet-body"></div>
+    </section>
   </div>
 
   <script src="services.js"></script>

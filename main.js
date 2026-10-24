@@ -12,11 +12,12 @@ app.setName(BRAND_NAME);
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1100,
-    height: 720,
-    minWidth: 800,
-    minHeight: 560,
+    width: 1280,
+    height: 820,
+    minWidth: 1024,
+    minHeight: 640,
     title: BRAND_NAME,
+    frame: false,
     backgroundColor: '#16181d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

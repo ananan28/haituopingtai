@@ -1,4 +1,4 @@
-const { ipcMain, clipboard } = require('electron');
+const { ipcMain, clipboard, BrowserWindow } = require('electron');
 const auth = require('./auth');
 const distribution = require('./distribution');
 
@@ -30,6 +30,28 @@ function registerIpc() {
   // 系统剪贴板
   handle('clipboard:write', (text) => {
     clipboard.writeText(String(text ?? ''));
+    return { ok: true };
+  });
+
+  // 自绘标题栏的窗口控制
+  const withWindow = (channel, fn) =>
+    ipcMain.handle(channel, (e) => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      if (!win) return { ok: false, error: '窗口不存在' };
+      return fn(win);
+    });
+
+  withWindow('window:minimize', (win) => {
+    win.minimize();
+    return { ok: true };
+  });
+  withWindow('window:toggleMaximize', (win) => {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+    return { ok: true, maximized: win.isMaximized() };
+  });
+  withWindow('window:close', (win) => {
+    win.close();
     return { ok: true };
   });
 }
