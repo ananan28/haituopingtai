@@ -17,6 +17,7 @@
       <div id="config-notice" class="config-notice" hidden>
         未配置 Supabase：请复制 .env.example 为 .env 并填写 SUPABASE_URL 和 SUPABASE_ANON_KEY
       </div>
+      <h2 id="auth-title" class="auth-title">会员登录</h2>
       <div class="auth-tabs">
         <button id="tab-login" class="auth-tab is-active" type="button">登录</button>
         <button id="tab-register" class="auth-tab" type="button">注册</button>
@@ -30,8 +31,22 @@
           密码
           <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位" />
         </label>
+        <div id="login-only" class="auth-row">
+          <label class="auth-remember">
+            <input id="remember" type="checkbox" checked />
+            记住密码
+          </label>
+          <a id="forgot-password" class="auth-link" href="#">忘记密码</a>
+        </div>
         <div id="auth-msg" class="auth-msg"></div>
         <button id="auth-submit" type="submit">登录</button>
+        <div id="oauth-block">
+          <div class="auth-divider"><span>或</span></div>
+          <button id="google-login" class="auth-oauth" type="button">使用 Google 登录</button>
+        </div>
+        <div class="auth-terms">
+          登录/注册即代表你同意 <a href="#">服务协议</a> 与 <a href="#">隐私政策</a>
+        </div>
       </form>
     </div>
   </div>

@@ -1,6 +1,6 @@
 // 服务注册表：以后新增服务，只需在下面数组加一项，侧边栏导航和占位页会自动生成。
 window.HAITUO_SERVICES = [
-  { id: 'translate', name: '翻译', icon: '译', desc: '多语言翻译引擎，占位待接入。' },
+  { id: 'translate', name: '翻译', icon: '译', desc: '180+ 语言互译、文档翻译、实时语音合成。' },
   { id: 'channel-whatsapp', name: '渠道 · WhatsApp', icon: 'W', desc: 'WhatsApp 渠道接入，占位待开发。' },
   { id: 'channel-telegram', name: '渠道 · Telegram', icon: 'T', desc: 'Telegram 渠道接入，占位待开发。' },
   { id: 'channel-signal', name: '渠道 · Signal', icon: 'S', desc: 'Signal 渠道接入，占位待开发。' },
