@@ -42,6 +42,9 @@ jobs:
       - name: Package (electron-builder NSIS)
         run: npm run dist
 
+      - name: Verify packaged resources
+        run: npm run test:package
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:

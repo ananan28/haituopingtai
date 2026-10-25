@@ -13,10 +13,12 @@
     "test:ui": "electron platform-preview.tmp.js",
     "test:ocr": "node ocr-security.tmp.js",
     "ci": "npm run test:vm && npm run test:db && npm run test:channels && npm run test:ui && npm run test:ocr",
-    "test:channels": "node --test tests/channel-isolation.test.js"
+    "test:channels": "node --test tests/channel-isolation.test.js",
+    "test:package": "node scripts/verify-package.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.2.16",
+    "@electron/asar": "3.4.1",
     "electron": "44.1.0",
     "electron-builder": "^26.18.0"
   },
