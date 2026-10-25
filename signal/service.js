@@ -6,6 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
 const ROOT = __dirname;
+const translationPolicy = require('./translation-policy');
 const read = file => JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 const config = { ...read('config/default.json'), ...read('config/production.json'), ...read('config/local-production.json') };
 const signalPackage = read('package.json');
@@ -126,7 +127,8 @@ function mount({ electron, runtime, profiles, access }) {
   on('signal:renderer-error', (entry, _event, value) => {
     if (typeof value === 'string') (entry.errors ||= []).push(value.slice(0, 12000));
   });
-  handle('caisheng:get-translation-config', () => ({ nativeTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', incomingEnabled: false, outgoingEnabled: false, autoTranslate: false }));
+  handle('caisheng:get-translation-config', () => ({ ...translationPolicy, nativeTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light', darkTheme: nativeTheme.shouldUseDarkColors }));
+  handle('caisheng:translate', () => { throw new Error('商业版平台翻译服务尚未接入，本机渠道不调用旧版免费翻译或个人 API'); });
   handle('cleanup-orphaned-attachments', () => {});
   handle('ensure-file-permissions', async entry => {
     if (process.platform !== 'win32') await fs.promises.chmod(path.join(runtime.directory, entry.profile), 0o700);

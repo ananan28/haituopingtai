@@ -28,6 +28,9 @@ test('Signal host service verifies profile ownership and never routes an unknown
   assert.equal(event.returnValue.version, require('../signal/package.json').version);
   assert.equal(handlers.has('caisheng:launch-signal-profile'), false);
   assert.equal(handlers.has('caisheng:show-settings-window'), false);
+  const policy = await handlers.get('caisheng:get-translation-config')(event);
+  assert.equal(policy.autoTranslateIncoming, false); assert.equal(policy.provider, 'platform'); assert.equal(policy.apiKey, '');
+  await assert.rejects(handlers.get('caisheng:translate')(event), /尚未接入/);
   const data = v8.serialize(['key']);
   const result = await handlers.get('sql-channel:read')(event, 'getItemById', data);
   assert.equal(v8.deserialize(result.value).value, 'private');

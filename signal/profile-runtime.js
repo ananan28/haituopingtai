@@ -7,7 +7,9 @@ const { ProfileSqlClient } = require('./sql-client');
 const SIGNAL_VERSION = require('./package.json').version;
 
 async function profileKey(directory, safeStorage) {
-  if (!safeStorage?.isEncryptionAvailable()) throw new Error('System key encryption is unavailable');
+  if (!safeStorage?.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend?.() === 'basic_text')) {
+    throw new Error('System key encryption is unavailable');
+  }
   const file = path.join(directory, 'sql-key.json');
   async function read() {
     const data = await fs.readFile(file, 'utf8');
