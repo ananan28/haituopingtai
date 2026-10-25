@@ -32,7 +32,7 @@ function verify(archive) {
     'signal/node_modules/@signalapp/sqlcipher/prebuilds/win32-x64/@signalapp+sqlcipher.node',
     'signal/node_modules/@signalapp/libsignal-client/prebuilds/win32-x64/@signalapp+libsignal-client.node'
   ]) {
-    assert.ok(asar.statFile(archive, name).unpacked, 'Native/worker resource must be unpacked: ' + name);
+    assert.ok(asar.statFile(archive, path.normalize(name)).unpacked, 'Native/worker resource must be unpacked: ' + name);
   }
   console.log('PASS package contents: version ' + pkg.version + ', Signal resources and unpacked native files present; environment/git/test files excluded.');
   console.log('This checks archive contents, not native ABI compatibility or real Signal account login.');
