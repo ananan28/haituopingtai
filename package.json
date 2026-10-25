@@ -9,7 +9,7 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "test:vm": "node runtime-security.tmp.js",
-    "test:db": "node database-security.tmp.js",
+    "test:db": "node staff-security.tmp.js",
     "test:ui": "electron platform-preview.tmp.js",
     "test:ocr": "node ocr-security.tmp.js",
     "ci": "npm run test:vm && npm run test:db && npm run test:ui && npm run test:ocr"
