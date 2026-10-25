@@ -41,7 +41,6 @@
       "ocr.js",
       "screenshot.js",
       "app-settings.js",
-      "signal-host.js",
       "package.json",
       "src/**",
       "assets/**",

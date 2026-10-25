@@ -7,7 +7,6 @@ const screenshot = require('./screenshot');
 const access = require('./runtime-access');
 const appSettings = require('./app-settings');
 const webchannels = require('./src/webchannels');
-const signalHost = require('./signal-host');
 
 // 品牌唯一来源：package.json 的 productName
 const BRAND_NAME = pkg.productName || pkg.name;
@@ -41,13 +40,6 @@ function createWindow() {
     if (appSettings.shouldMinimizeToTray()) { event.preventDefault(); win.hide(); }
   });
   win.on('closed', () => { if (mainWin === win) { mainWin = null; access.bindWindow(null); } });
-  // 旧海拓 Signal 宿主窗口跟随主窗口（移动/缩放/显隐/最小化都重新跟随）
-  win.on('move', () => signalHost.refresh());
-  win.on('resize', () => signalHost.refresh());
-  win.on('show', () => signalHost.refresh());
-  win.on('hide', () => signalHost.refresh());
-  win.on('minimize', () => signalHost.refresh());
-  win.on('restore', () => signalHost.refresh());
   access.bindWindow(win.webContents);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -72,17 +64,9 @@ app.whenReady().then(() => {
   screenshot.init({ getMainWindow: () => mainWin });
   webchannels.init({ getMainWindow: () => mainWin });
 
-  // 旧海拓 Signal 独立进程：启动后让它的原生窗口跟随/嵌入平台主窗口（永不脱窗）。
-  signalHost.init({ getMainWindow: () => mainWin });
-  signalHost.launch();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
-
-app.on('before-quit', () => {
-  signalHost.close();
 });
 
 app.on('window-all-closed', () => {

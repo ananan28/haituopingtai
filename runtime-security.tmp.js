@@ -921,7 +921,6 @@ test('main wiring: binds actual main contents before loading and forwards SIGNED
     './runtime-access': rt.access, './ipc': { registerIpc() {} }, './screenshot': { init() {} },
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
-    './signal-host': { init: () => {}, launch: () => false, refresh: () => {}, close: () => {}, isRunning: () => false },
     electron: { BrowserWindow: FakeWindow, app: { setName() {}, getPath: () => path.parse(ROOT).root,
       whenReady: () => ({ then(fn) { ready = fn; } }), on: (name, fn) => callbacks.set(name, fn), quit() {} } } });
   ready(); equal(windows.length, 1);
@@ -1319,7 +1318,6 @@ test('encryption: main passes the exact safeStorage dependency to auth only afte
     './auth': { init: (...args) => initCalls.push(args) }, './runtime-access': {}, './screenshot': {},
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
-    './signal-host': { init: () => {}, launch: () => false, refresh: () => {}, close: () => {}, isRunning: () => false },
     './ipc': { registerIpc: () => { throw stop; } },
     electron: { safeStorage: secure.api, BrowserWindow: function () { throw new HarnessError('GUI forbidden'); },
       app: { setName() {}, getPath(name) { equal(name, 'userData'); return fakeDirectory; },
