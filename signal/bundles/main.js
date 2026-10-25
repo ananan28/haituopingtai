@@ -27266,23 +27266,28 @@ function yh(e) {
 
 function bh(e) {
     if (mh) throw Error(`sqlChannels: already initialized!`);
-    mh = !0, ph = e, p.ipcMain.handle(hh, yh(function(e, t, n) {
-        if (!ph) throw Error(`${hh}: Not yet initialized!`);
-        return ph.sqlReadSerialized(t, n);
-    })), p.ipcMain.handle(gh, yh(function(e, t, n) {
-        if (!ph) throw Error(`${gh}: Not yet initialized!`);
-        return ph.sqlWriteSerialized(t, n);
-    })), p.ipcMain.handle(_h, () => {
-        if (!ph) throw Error(`${_h}: Not yet initialized!`);
-        return ph.removeDB();
+    mh = !0, ph = e, p.ipcMain.handle(hh, yh(function(ev, t, n) {
+        let c = __sqlClientFor(__profileForSender(ev));
+        if (!c) throw Error(`${hh}: Not yet initialized!`);
+        return c.sqlReadSerialized(t, n);
+    })), p.ipcMain.handle(gh, yh(function(ev, t, n) {
+        let c = __sqlClientFor(__profileForSender(ev));
+        if (!c) throw Error(`${gh}: Not yet initialized!`);
+        return c.sqlWriteSerialized(t, n);
+    })), p.ipcMain.handle(_h, (ev) => {
+        let c = __sqlClientFor(__profileForSender(ev));
+        if (!c) throw Error(`${_h}: Not yet initialized!`);
+        return c.removeDB();
     }), p.ipcMain.handle(`erase-sql-key`, () => {
         dd(), Nm();
-    }), p.ipcMain.handle(vh, () => {
-        if (!ph) throw Error(`${vh}: Not yet initialized!`);
-        return ph.pauseWriteAccess();
-    }), p.ipcMain.handle(`resume-sql-writes`, () => {
-        if (!ph) throw Error(`${vh}: Not yet initialized!`);
-        return ph.resumeWriteAccess();
+    }), p.ipcMain.handle(vh, (ev) => {
+        let c = __sqlClientFor(__profileForSender(ev));
+        if (!c) throw Error(`${vh}: Not yet initialized!`);
+        return c.pauseWriteAccess();
+    }), p.ipcMain.handle(`resume-sql-writes`, (ev) => {
+        let c = __sqlClientFor(__profileForSender(ev));
+        if (!c) throw Error(`${vh}: Not yet initialized!`);
+        return c.resumeWriteAccess();
     });
 }
 
@@ -28687,6 +28692,18 @@ X.info(`making app single instance`), haituoSingleInstanceReady ? ($u === `signa
 let w_ = 0, T_ = 0;
 
 const E_ = new fh, D_ = qh();
+
+// [haituo-p4] 多账号 per-profile SQL 客户端：主账号用 E_，子账号按 profile 建独立客户端。
+// 渲染器 event.sender -> profile 由宿主注入（global.__haituoSignalProfileFor）。
+const __sqlProfiles = new Map;
+function __sqlClientFor(e) {
+    if (!e || e === `signal-main`) return E_;
+    let t = __sqlProfiles.get(e);
+    return t || (t = new fh, __sqlProfiles.set(e, t), t);
+}
+function __profileForSender(e) {
+    return global.__haituoSignalProfileFor ? global.__haituoSignalProfileFor(e && e.sender) : null;
+}
 
 async function O_() {
     let e = Mm(`spell-check`);

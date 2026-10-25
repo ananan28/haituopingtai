@@ -14,6 +14,7 @@
 const { WebContentsView, ipcMain, app } = require('electron');
 const path = require('node:path');
 const signal = require('./index.js');
+const profiles = require('./profiles.js');
 
 let access = null;
 function getAccess() {
@@ -88,6 +89,8 @@ function createView(accountId) {
 
   const view = new WebContentsView({ webPreferences: signal.rendererPreferences('signal-main') });
   const wc = view.webContents;
+  // 绑定 webContents -> profile，供 bundle 内 SQL 客户端按 event.sender 路由（P4）
+  profiles.bindWebContents(wc, profiles.profileForAccount(accountId));
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (event) => event.preventDefault());
 

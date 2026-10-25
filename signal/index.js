@@ -14,6 +14,7 @@ const path = require('node:path');
 
 const SIGNAL_ROOT = __dirname;
 const NATIVE = path.join(SIGNAL_ROOT, 'node_modules');
+const profiles = require('./profiles');
 
 let loaded = false;
 
@@ -30,6 +31,8 @@ function mount(opts = {}) {
 
   require(path.join(SIGNAL_ROOT, 'bundles', 'main.js'));
   loaded = true;
+  // bundle 内 __profileForSender 通过此钩子按 event.sender 路由 SQL 客户端到对应 profile
+  global.__haituoSignalProfileFor = (wc) => profiles.profileForWebContents(wc);
   return true;
 }
 
