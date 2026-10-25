@@ -20,6 +20,7 @@ const ROLES = ['owner', 'admin', 'user', 'staff'];
 const ACCOUNT_IDS = ['wa-lea', 'tg-chen', 'wa-group', 'sg-sophie'];
 let current = null;
 let demo = false;
+let local = false;
 let generation = 0;
 let busy = false;
 let allowRestore = true;
@@ -53,7 +54,7 @@ function denied(error = '当前身份没有此操作权限') {
 }
 
 async function restore() {
-  if (demo || !allowRestore) return { ok: true, user: current };
+  if (demo || local || !allowRestore) return { ok: true, user: current };
   if (busy) return denied('认证处理中，请稍候');
   const stamp = generation;
   const request = ++verification;
@@ -72,7 +73,7 @@ async function restore() {
 }
 
 async function authenticate(method, email, password) {
-  if (demo) return denied('请先退出离线演示，再使用服务器账号');
+  if (demo || local) return denied('请先退出本机工作区或离线演示，再使用服务器账号');
   if (busy) return denied('认证处理中，请稍候');
   if (!['signIn', 'signUp'].includes(method) || typeof email !== 'string' || email.length > 320
     || typeof password !== 'string' || password.length < 6 || password.length > 1024) return denied('邮箱或密码格式无效');
@@ -95,11 +96,12 @@ async function authenticate(method, email, password) {
 
 async function enterDemo(role) {
   if (busy) return denied('认证处理中，请稍候');
-  if (current && !demo) return denied('请先退出服务器账号，再进入离线演示');
+  if (current && !demo && !local) return denied('请先退出服务器账号，再进入离线演示');
   if (typeof role !== 'string' || !Object.hasOwn(RULES, role)) return denied('无效演示角色');
   busy = true;
   current = null;
   demo = false;
+  local = false;
   allowRestore = false;
   changed();
   const stamp = generation;
@@ -113,11 +115,32 @@ async function enterDemo(role) {
   finally { busy = false; }
 }
 
+async function enterLocal() {
+  if (busy) return denied('认证处理中，请稍候');
+  if (current && !demo && !local) return denied('请先退出服务器账号，再进入本机工作区');
+  busy = true; current = null; demo = false; local = false; allowRestore = false; changed();
+  const stamp = generation;
+  try {
+    await auth.clearLocalSession();
+    if (stamp !== generation) return denied('身份已切换');
+    local = true;
+    current = Object.freeze({
+      id: 'local-workspace', email: '本机渠道工作区', role: 'user', label: '本机渠道工作区',
+      demo: false, local: true, revision: generation, scope: 'local:workspace',
+      permissions: Object.freeze([...COMMON, 'catalog', 'account-edit', 'account-delete', 'screenshot']),
+      accountIds: Object.freeze(['local:whatsapp-1', 'local:telegram-k-1', 'local:telegram-a-1', 'local:signal-1', 'local:signal-2'])
+    });
+    return { ok: true, user: current };
+  } catch { return denied('无法清除旧会话，未进入本机工作区'); }
+  finally { busy = false; }
+}
+
 async function signOut() {
   if (busy) return denied('认证处理中，请稍候');
-  const wasDemo = demo;
+  const wasDemo = demo || local;
   current = null;
   demo = false;
+  local = false;
   allowRestore = false;
   changed();
   if (wasDemo) return { ok: true };
@@ -131,7 +154,7 @@ function can(permission) {
 }
 
 async function authorize(permission) {
-  if (demo) return denied('离线演示禁止访问真实账号、分销和支付接口');
+  if (demo || local) return denied('本机工作区与离线演示禁止访问服务器账号、分销和支付接口');
   const stamp = generation;
   const res = await restore();
   if (stamp !== generation || demo || !res.ok || !current) return denied('无法核验服务器身份，请重新登录');
@@ -139,15 +162,15 @@ async function authorize(permission) {
 }
 
 function invalidate() {
-  if (demo) return;
+  if (demo || local) return;
   current = null;
   allowRestore = false;
   changed();
 }
 
 module.exports = {
-  trusted, restore, authenticate, enterDemo, signOut, authorize, can, invalidate,
-  isDemo: () => demo, current: () => current, revision: () => generation,
+  trusted, restore, authenticate, enterDemo, enterLocal, signOut, authorize, can, invalidate,
+  isDemo: () => demo || local, current: () => current, revision: () => generation,
   bindWindow: (contents) => { mainContents = contents; },
   onChange: (listener) => { listeners.add(listener); return () => listeners.delete(listener); }
 };

@@ -2,7 +2,7 @@
 /**
  * signal/index.js — Signal 渠道后端挂载模块（源码级融合，同进程）。
  *
- * 把旧海拓（Signal Desktop 分支）主进程 bundle 以"模块"形式挂进平台主进程：
+ * Signal 使用宿主服务 + 独立 SQL worker；不加载旧海拓主进程入口：
  *  - 不 spawn 独立进程、不做子窗口/原生窗口跟随；
  *  - 每账号 = 同一进程内一个 Signal 会话（WebContentsView + 独立 persist 分区，见 P3）。
  *
@@ -15,24 +15,25 @@ const path = require('node:path');
 const SIGNAL_ROOT = __dirname;
 const NATIVE = path.join(SIGNAL_ROOT, 'node_modules');
 const profiles = require('./profiles');
+const { ProfileRuntime } = require('./profile-runtime');
+let runtime;
+function getRuntime() {
+  if (!runtime) {
+    const { app, safeStorage } = require('electron');
+    runtime = new ProfileRuntime({ directory: path.join(app.getPath('userData'), 'SignalProfiles'), safeStorage });
+  }
+  return runtime;
+}
+function prepareProfile(scope, accountId) { return getRuntime().open(scope, accountId); }
+function closeProfile(profile) { return runtime ? runtime.close(profile) : Promise.resolve(); }
+function closeAllProfiles() { return runtime ? runtime.closeAll() : Promise.resolve(); }
 
 let loaded = false;
 
-function mount(opts = {}) {
+function mount() {
   if (loaded) return false;
-  const { app } = require('electron');
-  // bundle 内 config/构建脚本用 app.getAppPath() 定位 config/build/_locales
-  try { app.getAppPath = () => SIGNAL_ROOT; } catch (_) { /* 只读则忽略，交由调用方保证路径 */ }
-
-  const profile = typeof opts.profile === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(opts.profile) ? opts.profile : 'signal-main';
-  if (!process.argv.some((a) => a.startsWith('--caisheng-profile='))) {
-    process.argv.push('--caisheng-profile=' + profile);
-  }
-
-  require(path.join(SIGNAL_ROOT, 'bundles', 'main.js'));
+  require('./service').mount({ electron: require('electron'), runtime: getRuntime(), profiles, access: require('../runtime-access') });
   loaded = true;
-  // bundle 内 __profileForSender 通过此钩子按 event.sender 路由 SQL 客户端到对应 profile
-  global.__haituoSignalProfileFor = (wc) => profiles.profileForWebContents(wc);
   return true;
 }
 
@@ -50,9 +51,9 @@ function rendererPreferences(profile) {
     sandbox: false,
     contextIsolation: true,
     spellcheck: true,
-    preload: path.join(SIGNAL_ROOT, 'bundles', 'preload', 'wrapper.js'),
+    preload: path.join(SIGNAL_ROOT, 'preload.js'),
     additionalArguments: profile && profile !== 'signal-main' ? ['--caisheng-renderer-profile=' + profile] : []
   };
 }
 
-module.exports = { mount, isMounted, rendererPreferences, ROOT: SIGNAL_ROOT, NATIVE };
+module.exports = { mount, isMounted, rendererPreferences, ROOT: SIGNAL_ROOT, NATIVE, prepareProfile, closeProfile, closeAllProfiles };

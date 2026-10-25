@@ -24,14 +24,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Restore verified Signal native resources
+        run: npm run prepare:signal
+
       - name: Test VM security (runtime-security)
         run: npm run test:vm
+
+      - name: Test local workspace authority boundary
+        run: npm run test:local
 
       - name: Test database security (PGlite)
         run: npm run test:db
 
       - name: Test channel isolation
         run: npm run test:channels
+
+      - name: Test persistent message records
+        run: npm run test:messages
+
+      - name: Test Signal profile lifecycle
+        run: npm run test:signal
+
+      - name: Test native Signal workers in Electron with OS encryption
+        run: npm run test:signal:electron
+
+      - name: Test real Signal views in host window
+        run: npm run test:signal:view
 
       - name: Test hidden Electron UI (platform-preview)
         run: npm run test:ui

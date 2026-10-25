@@ -12,6 +12,11 @@ const brand = {
 
 contextBridge.exposeInMainWorld('haituo', {
   brand,
+  messages: {
+    list: (value) => ipcRenderer.invoke('messages:list', value),
+    put: (value) => ipcRenderer.invoke('messages:put', value),
+    translate: (value) => ipcRenderer.invoke('messages:translate', value)
+  },
   system: { fonts: () => ipcRenderer.invoke('system:fonts') },
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
@@ -19,6 +24,7 @@ contextBridge.exposeInMainWorld('haituo', {
     signIn: (email, password) => ipcRenderer.invoke('auth:signin', email, password),
     signOut: () => ipcRenderer.invoke('auth:signout'),
     enterDemo: (role) => ipcRenderer.invoke('auth:demo', role),
+    enterLocal: () => ipcRenderer.invoke('auth:local'),
     getSession: () => ipcRenderer.invoke('auth:session'),
     onAuthStateChange: (cb) => {
       const listener = (_e, payload) => cb(payload);

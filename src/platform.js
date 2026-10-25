@@ -57,6 +57,9 @@
     if (!access.can('home')) return denied();
     const user = access.get();
     const role = user.role;
+    if (user.local) return node('本机渠道工作区', '连接本机聊天渠道；未登录服务器，没有资金或后台管理权限。',
+      card('选择渠道', accounts.map(a => `<button class="platform-account hp-ghost" type="button" data-platform-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>独立登录态与本地资料</small></button>`).join('')) +
+      card('当前范围', '<p>WhatsApp、Telegram 使用官方网页；Signal 使用平台内部的独立账号视图。请在渠道内完成扫码登录。</p><p>真实 AI 翻译与字符计费尚未接入，本工作区不展示虚构余额。</p>') + go('appearance', '外观设置'));
     const descriptions = {
       owner: '平台管理与配置预览；运营管理和个人消费分开。',
       admin: '公告、定价与子账号管理；不含角色管理与财务提现。',
@@ -70,6 +73,7 @@
     return node('欢迎回来，' + user.label, descriptions[role],
       `<div class="platform-metrics"><section><span>${role === 'staff' ? '分配的账号' : '可见渠道账号'}</span><strong>${accounts.length}</strong><small>${user.demo ? '本地样例' : '真实渠道尚未接入'}</small></section><section><span>${totalLabel}</span><strong>${amount('remaining')}</strong><small>不会产生真实扣费</small></section><section><span>本月用量（示例）</span><strong>${amount('used')}</strong><small>正式用量待服务端核验</small></section></div>` +
       `<div class="platform-columns">${card('常用入口', `<div class="platform-links">${links}</div>`)}${card('继续会话', accountsHtml || '<p>暂无已接入渠道。正式账号不会加载他人的演示会话。</p>')}</div>` +
+      (user.demo ? card('本机渠道测试', '<p>打开独立本机工作区，连接 WhatsApp、Telegram 与 Signal。不会获得服务器管理或资金权限。</p><button class="hp-primary" type="button" data-local-workspace>进入本机渠道工作区</button>') : '') +
       card('平台状态', '<ul class="platform-status"><li>聊天：当前是海拓自制演示，非官方聊天页面。</li><li>翻译与模型：本地预览，不调用真实模型，不扣真实余额。</li><li>支付、正式员工管理、配置同步：待后端部署与验收。</li><li>官方网页版渠道后续保留原生操作；Signal 桌面模块需完成 AGPL 合规核查。</li></ul>') +
       note('切换首页不会清空当前账号草稿。演示资料与服务器身份分区保存，不迁移或覆盖旧版未归属的本地存档。'));
   }

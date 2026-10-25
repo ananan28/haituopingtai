@@ -199,3 +199,12 @@ window.HAITUO_CHANNEL_CATALOG = [
   { id: 'band', name: 'Band', icon: 'B', tag: '社媒', coming: true },
   { id: 'custom', name: '自定义服务', icon: '+', tag: 'URL 内嵌', coming: true, custom: true, url: true }
 ];
+
+// Explicit local networking workspace; no server identity or financial authority.
+window.HAITUO_LOCAL_ACCOUNTS = [
+  ['whatsapp-1', 'WhatsApp 1', 'whatsapp'],
+  ['telegram-k-1', 'Telegram K 1', 'telegram-k'],
+  ['telegram-a-1', 'Telegram A 1', 'telegram-a'],
+  ['signal-1', 'Signal 1', 'signal'],
+  ['signal-2', 'Signal 2', 'signal']
+].map(([id, name, channel]) => ({ id: 'local:' + id, name, channel, avatar: '', account: '本机渠道 · 等待配对', status: 'online', unread: 0, partition: '独立持久会话', loggedIn: true, demo: false, local: true, ui: { font: 'md', density: 3 } }));

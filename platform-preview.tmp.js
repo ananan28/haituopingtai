@@ -26,7 +26,11 @@ function check(name, ok, detail) {
   checks.push({ name, ok: Boolean(ok), detail });
   console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail === undefined ? '' : ' ' + JSON.stringify(detail)));
 }
-async function js(body) { return win.webContents.executeJavaScript('(async()=>{' + body + '})()'); }
+async function js(body) {
+  const result = await win.webContents.executeJavaScript('(async()=>{' + body + '})()');
+  await win.webContents.executeJavaScript(`(async()=>{const deadline=Date.now()+12000;while(document.querySelector('[data-history-loading]')){if(Date.now()>deadline)throw Error('Message history load timeout');await new Promise(r=>setTimeout(r,20));}})()`);
+  return result;
+}
 async function wait(expr, timeout = 12000) {
   await js(`const deadline=Date.now()+${timeout}; while(!(${expr})){ if(Date.now()>deadline)throw new Error(${JSON.stringify('Timeout: ' + expr)}); await new Promise(r=>setTimeout(r,60)); }`);
 }
@@ -51,6 +55,7 @@ async function logout() {
 }
 async function run() {
   require('./ipc').registerIpc();
+  require('./messages-ipc').init({ app, ipcMain: require('electron').ipcMain, access: require('./runtime-access') });
   // Non-Windows runners cannot enumerate Windows fonts. Keep UI rendering deterministic;
   // authorization of the production font handler is covered by runtime-security.
   if (process.platform !== 'win32') {
@@ -64,6 +69,7 @@ async function run() {
   }
   const pkg = require('./package.json');
   win = new BrowserWindow({ width: 1280, height: 820, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, offscreen: true, backgroundThrottling: false, additionalArguments: ['--haituo-brand=' + encodeURIComponent(pkg.productName), '--haituo-version=' + encodeURIComponent(pkg.version)] } });
+  win.setSize(1280, 820);
   require('./runtime-access').bindWindow(win.webContents);
   win.on('focus', () => { focused = true; });
   win.webContents.on('console-message', (_e, level, message) => { if (level >= 3) errors.push(message); });
@@ -129,6 +135,14 @@ async function run() {
   await js(`selectAccount('demo:wa-lea');`);
   check('appearance affects actual conversation', await js(`const b=getComputedStyle(document.querySelector('.em-bubble'));return b.backgroundColor==='rgb(34, 51, 68)'&&b.fontSize==='18px'&&b.fontFamily.includes('Arial');`));
   await shot('04-custom-conversation');
+  await fill('#em-input', 'persisted bilingual message 90817');
+  await click('.em-send');
+  await wait(`document.querySelector('.em-messages').textContent.includes('persisted bilingual message 90817')`);
+  check('outgoing message is persisted with its translation in one record', await js(`const r=await haituo.messages.list({accountId:'demo:wa-lea',channel:'whatsapp',conversationId:'demo-conversation'});return r.ok&&r.records.some(m=>m.body==='persisted bilingual message 90817'&&m.translation?.text);`));
+  await js(`selectPage('home');selectAccount('demo:wa-lea');`);
+  check('reopening conversation restores one bilingual message without duplicate rows', await js(`const rows=[...document.querySelectorAll('[data-message-id]')].filter(e=>e.querySelector('.em-bubble')?.textContent==='persisted bilingual message 90817');return rows.length===1&&!!rows[0].querySelector('.em-tr');`));
+  await fill('#em-input', '<img src=x onerror="window.__xss=1"> retained draft');
+
   await js(`selectPage('appearance');`);
   await wait(`document.querySelector('#appearance-font').options.length>1`);
   await fill('#appearance-account', 'demo:tg-chen');
@@ -247,11 +261,18 @@ async function run() {
   await logout();
   await login('user');
   await js(`selectAccount('demo:wa-lea');`);
+  check('renderer reload retains persisted bilingual message', await js(`const row=[...document.querySelectorAll('[data-message-id]')].find(e=>e.querySelector('.em-bubble')?.textContent==='persisted bilingual message 90817');return !!row?.querySelector('.em-tr');`));
   check('renderer reload retains scoped draft', await js(`return document.querySelector('#em-input').value.includes('retained draft');`));
   await logout();
   win.setSize(1024, 640);
   check('minimum window login reachable by scroll', await js(`const c=document.querySelector('.auth-card');c.scrollTop=c.scrollHeight;const r=document.querySelector('#demo-login').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;`));
   await shot('14-login-minimum');
+  await login('owner');
+  await click('[data-local-workspace]');
+  await wait(`HaituoAccess.get()?.local===true&&state.accounts.length===5`);
+  check('local workspace exposes real channels without server privileges', await js(`return state.accounts.every(a=>!a.demo&&a.local)&&!HaituoAccess.can('staff:manage')&&!HaituoAccess.can('recharge')&&!HaituoAccess.can('providers')&&document.querySelector('#role-badge').textContent.includes('无服务器权限');`));
+  check('local workspace cannot call staff backend', await js(`const r=await haituo.staff.list();return !r.ok;`));
+  await logout();
   check('zero business calls', businessCalls === 0, businessCalls);
   check('window never focused', !focused && !win.isVisible(), { focused, visible: win.isVisible() });
   check('no renderer errors', errors.length === 0, errors);

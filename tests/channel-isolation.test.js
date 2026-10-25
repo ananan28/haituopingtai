@@ -56,7 +56,7 @@ function fixture(file) {
   const app = new EventEmitter();
   let identity = { scope: 'server:one', demo: false, accountIds: ['a:b'] };
   let onChange;
-  const access = { trusted: () => true, can: () => true, current: () => identity, onChange: fn => { onChange = fn; } };
+  const access = { trusted: () => true, can: () => true, current: () => identity, revision: () => identity?.scope, onChange: fn => { onChange = fn; } };
   const created = [];
   class View {
     constructor(options) {
@@ -67,7 +67,7 @@ function fixture(file) {
       Object.assign(wc, {
         id: created.length + 1, isDestroyed: () => closed,
         close: () => { closed = true; wc.emit('destroyed'); },
-        setWindowOpenHandler() {}, setUserAgent() {},
+        setWindowOpenHandler() {}, setUserAgent() {}, send() {},
         loadURL: async () => {}, loadFile: async () => {}, reload: () => { this.reloads = (this.reloads || 0) + 1; }
       });
       this.webContents = wc;
@@ -81,7 +81,9 @@ function fixture(file) {
   const win = { isDestroyed: () => false, webContents: wc,
     contentView: { addChildView: v => children.add(v), removeChildView: v => children.delete(v) } };
   const module = { exports: {} };
-  const signal = { ROOT: '/signal', mount() {}, isMounted: () => true, rendererPreferences: () => ({}) };
+  const signal = { ROOT: '/signal', mount() {}, isMounted: () => true, rendererPreferences: () => ({}),
+    prepareProfile: async (scope, id) => ({ profile: profiles.profileForAccount(id, scope) }),
+    closeProfile: async () => {}, closeAllProfiles: async () => {} };
   const context = { module, exports: module.exports, __dirname: path.dirname(path.join(__dirname, '..', file)), URL, console,
     require(name) {
       if (name === 'electron') return { WebContentsView: View, ipcMain: { handle: (id, fn) => {
@@ -106,29 +108,29 @@ function fixture(file) {
 }
 
 for (const file of ['src/webchannels.js', 'signal/channel.js']) {
-  test(file + ': demo and suffix account IDs cannot create network views', () => {
+  test(file + ': demo and suffix account IDs cannot create network views', async () => {
     const f = fixture(file);
-    assert.equal(f.call('open', 'b', 'whatsapp').ok, false);
+    assert.equal(((await f.call('open', 'b', 'whatsapp'))).ok, false);
     f.switchIdentity({ scope: 'demo:owner', demo: true, accountIds: ['a:b'] });
-    assert.equal(f.call('open', 'a:b', 'whatsapp').ok, false);
+    assert.equal((await f.call('open', 'a:b', 'whatsapp')).ok, false);
     assert.equal(f.created.length, 0);
   });
-  test(file + ': identity switch closes all active and hidden views', () => {
+  test(file + ': identity switch closes all active and hidden views', async () => {
     const f = fixture(file);
-    assert.equal(f.call('open', 'a:b', 'whatsapp').ok, true);
+    assert.equal((await f.call('open', 'a:b', 'whatsapp')).ok, true);
     f.call('setVisible', 'a:b', true);
     assert.equal(f.created[0].visible, true);
     f.switchIdentity({ scope: 'server:two', demo: false, accountIds: ['a:b'] });
     assert.equal(f.created[0].webContents.isDestroyed(), true);
     assert.equal(f.children.size, 0);
-    assert.equal(f.call('open', 'a:b', 'whatsapp').ok, true);
+    assert.equal((await f.call('open', 'a:b', 'whatsapp')).ok, true);
     if (file.startsWith('src/')) assert.notEqual(f.created[0].options.webPreferences.partition, f.created[1].options.webPreferences.partition);
     f.call('destroyAll');
     assert.equal(f.created[1].webContents.isDestroyed(), true);
   });
-  test(file + ': refresh reloads the existing renderer and sleep releases it', () => {
+  test(file + ': refresh reloads the existing renderer and sleep releases it', async () => {
     const f = fixture(file);
-    f.call('open', 'a:b', 'whatsapp');
+    await f.call('open', 'a:b', 'whatsapp');
     f.call('refresh', 'a:b');
     assert.equal(f.created.length, 1);
     assert.equal(f.created[0].reloads, 1);
@@ -138,9 +140,9 @@ for (const file of ['src/webchannels.js', 'signal/channel.js']) {
   });
 }
 
-test('web channel cannot silently reuse a view from a different provider', () => {
+test('web channel cannot silently reuse a view from a different provider', async () => {
   const f = fixture('src/webchannels.js');
-  assert.equal(f.call('open', 'a:b', 'whatsapp').ok, true);
-  assert.equal(f.call('open', 'a:b', 'telegram-a').ok, false);
+  assert.equal((await f.call('open', 'a:b', 'whatsapp')).ok, true);
+  assert.equal((await f.call('open', 'a:b', 'telegram-a')).ok, false);
   assert.equal(f.created.length, 1);
 });

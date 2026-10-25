@@ -7,9 +7,9 @@ const pkg = require('../package.json');
 function verify(archive) {
   const entries = new Set(asar.listPackage(archive).map(name => name.replace(/\\/g, '/').replace(/^\/+/, '')));
   const required = [
-    'main.js', 'preload.js', 'src/index.html', 'src/channel-identity.js',
-    'signal/index.js', 'signal/channel.js', 'signal/profiles.js',
-    'signal/background.html', 'signal/bundles/main.js',
+    'main.js', 'preload.js', 'message-store.js', 'messages-ipc.js', 'src/message-records.js', 'src/index.html', 'src/channel-identity.js',
+    'signal/index.js', 'signal/preload.js', 'signal/profile-runtime.js', 'signal/sql-client.js', 'signal/channel.js', 'signal/profiles.js',
+    'signal/background.html', 'signal/service.js',
     'signal/bundles/preload/wrapper.js', 'signal/bundles/workers/sql.js',
     ...[
       '@signalapp/libsignal-client/dist/index.js',
@@ -24,11 +24,13 @@ function verify(archive) {
   for (const name of entries) {
     assert.ok(!/(^|\/)\.env(?:$|\.)|\.tmp\.js$|(^|\/)\.git(?:\/|$)/.test(name), 'Private/development file packaged: ' + name);
   }
+  assert.ok(!entries.has('signal/bundles/main.js'), 'Former application entrypoint must not be distributed');
   const bundled = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
   assert.equal(bundled.version, pkg.version);
   assert.equal(bundled.name, 'haituo-platform');
   for (const name of [
     'signal/bundles/workers/sql.js',
+    'signal/node_modules/@signalapp/ringrtc/build/win32/libringrtc-x64.node',
     'signal/node_modules/@signalapp/sqlcipher/prebuilds/win32-x64/@signalapp+sqlcipher.node',
     'signal/node_modules/@signalapp/libsignal-client/prebuilds/win32-x64/@signalapp+libsignal-client.node'
   ]) {

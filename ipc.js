@@ -25,6 +25,7 @@ function registerIpc() {
   handle('auth:signout', () => access.signOut());
   handle('auth:session', () => access.restore());
   handle('auth:demo', (role) => access.enterDemo(role));
+  handle('auth:local', () => access.enterLocal());
 
   const protectedCall = (permission, fn) => async (...args) => {
     const verdict = await access.authorize(permission);

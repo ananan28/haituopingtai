@@ -25,8 +25,11 @@ function getAccess() {
 
 const ACCOUNT_ID_RE = /^[^\s/\\]{1,128}$/;
 let getMainWindow = () => null;
+const openings = new Map();
 const views = new Map(); // accountId -> { view }
 let registered = false;
+let lifecycle = 0;
+const accountEpochs = new Map();
 
 function mainWindow() {
   const win = getMainWindow();
@@ -57,6 +60,9 @@ function clampBounds(rect) {
 }
 
 function destroy(accountId) {
+  accountEpochs.set(accountId, (accountEpochs.get(accountId) || 0) + 1);
+  const identity = getAccess().current();
+  if (identity) signal.closeProfile(profiles.profileForAccount(accountId, identity.scope)).catch(() => {});
   const entry = views.get(accountId);
   if (!entry) return;
   const win = mainWindow();
@@ -68,36 +74,56 @@ function destroy(accountId) {
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
   } catch { /* 关闭失败不阻断 */ }
   views.delete(accountId);
+  if (entry.profile) signal.closeProfile(entry.profile).catch(() => {});
 }
 
 function destroyAll() {
+  lifecycle++;
   for (const id of Array.from(views.keys())) destroy(id);
+  openings.clear();
+  signal.closeAllProfiles().catch(() => {});
 }
 
-function createView(accountId) {
+async function createView(accountId) {
+  const epoch = accountEpochs.get(accountId) || 0;
+  const generation = lifecycle;
   const win = mainWindow();
   if (!win) return { ok: false, error: '主窗口不可用' };
-
-  if (!signal.isMounted()) signal.mount({ profile: 'signal-main' });
 
   const existing = views.get(accountId);
   if (existing && !existing.view.webContents.isDestroyed()) {
     return { ok: true, created: false };
   }
 
-  const view = new WebContentsView({ webPreferences: signal.rendererPreferences('signal-main') });
+  const identity = getAccess().current();
+  const revision = getAccess().revision();
+  const entry = await signal.prepareProfile(identity.scope, accountId);
+  if (generation !== lifecycle || epoch !== (accountEpochs.get(accountId) || 0) || getAccess().revision() !== revision || getAccess().current()?.scope !== identity.scope || mainWindow() !== win) {
+    await signal.closeProfile(entry.profile);
+    return { ok: false, error: '身份或主窗口已变更' };
+  }
+  try { if (!signal.isMounted()) signal.mount({ profile: 'signal-main' }); }
+  catch (error) { await signal.closeProfile(entry.profile); throw error; }
+  const profile = entry.profile;
+  const view = new WebContentsView({ webPreferences: { ...signal.rendererPreferences(profile), partition: 'persist:haituo-' + profile } });
   const wc = view.webContents;
   // 绑定 webContents -> profile，供 bundle 内 SQL 客户端按 event.sender 路由（P4）
-  profiles.bindWebContents(wc, profiles.profileForAccount(accountId, getAccess().current().scope));
+  profiles.bindWebContents(wc, profile);
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (event) => event.preventDefault());
 
   view.setVisible(false);
   win.contentView.addChildView(view);
-  views.set(accountId, { view });
+  views.set(accountId, { view, profile });
 
-  wc.loadFile(path.join(signal.ROOT, 'background.html')).catch(() => {});
-  return { ok: true, created: true };
+  try {
+    await wc.loadFile(path.join(signal.ROOT, 'background.html'));
+    if (getAccess().revision() !== revision || wc.isDestroyed()) return { ok: false, error: '会话已关闭' };
+    return { ok: true, created: true };
+  } catch {
+    destroy(accountId);
+    return { ok: false, error: 'Signal 页面加载失败' };
+  }
 }
 
 function init(options = {}) {
@@ -111,9 +137,13 @@ function init(options = {}) {
     return;
   }
 
-  ipcMain.handle('signal:open', (event, accountId) => {
+  ipcMain.handle('signal:open', async (event, accountId) => {
     if (!signalAllowed(event, accountId)) return { ok: false, error: '无权限' };
-    return createView(accountId);
+    if (openings.has(accountId)) return openings.get(accountId);
+    const operation = createView(accountId).catch(() => ({ ok: false, error: 'Signal 初始化失败，请检查系统密钥与数据库运行依赖' }));
+    openings.set(accountId, operation);
+    try { return await operation; }
+    finally { if (openings.get(accountId) === operation) openings.delete(accountId); }
   });
   ipcMain.handle('signal:setBounds', (event, accountId, rect) => {
     if (!signalAllowed(event, accountId)) return { ok: false, error: '无权限' };
@@ -128,6 +158,7 @@ function init(options = {}) {
     const entry = views.get(accountId);
     if (!entry || entry.view.webContents.isDestroyed()) return { ok: true };
     entry.view.setVisible(Boolean(visible));
+    if (visible) entry.view.webContents.send('activate');
     return { ok: true };
   });
   ipcMain.handle('signal:destroyAll', (event) => {

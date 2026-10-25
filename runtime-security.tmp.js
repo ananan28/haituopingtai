@@ -483,7 +483,7 @@ test('race: server invalidation during pending login must discard late identity'
   const before = f.access.revision(); f.access.invalidate(); d.resolve(session('owner'));
   const result = await pending;
   denied(result); check(f.access.revision() > before); check(f.access.current() === null);
-}, [['runtime-access.js', 'if (demo) return;'], ['runtime-access.js', "if (method === 'signIn' && result.ok"]]);
+}, [['runtime-access.js', 'if (demo || local) return;'], ['runtime-access.js', "if (method === 'signIn' && result.ok"]]);
 test('race: newer verification denial must stop older authorize and backend mutation', async () => {
   const d = deferred(); let n = 0;
   const f = ipcFixture(runtime({ getSession: () => ++n === 1 ? d.promise : Promise.resolve({ ok: false, user: null, error: 'revoked' }) }));
@@ -590,7 +590,7 @@ test('preload: exact bridge routes, listener cleanup, no generic IPC escape', as
   } });
   equal(exposed.length, 1); equal(exposed[0][0], 'haituo'); const bridge = exposed[0][1];
   const keys = Object.keys(bridge);
-  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels', 'signal'];
+  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels', 'signal', 'messages'];
   check(keys.every((k) => allowedGroups.includes(k)), 'Unexpected bridge group: ' + JSON.stringify(keys));
   for (const g of ['auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls']) check(keys.includes(g), 'Missing bridge group ' + g);
   const routes = {
@@ -927,6 +927,7 @@ test('main wiring: binds actual main contents before loading and forwards SIGNED
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
     './signal/channel': { init: () => {} },
+    './messages-ipc': { init: () => {} },
     electron: { BrowserWindow: FakeWindow, app: { setName() {}, getPath: () => path.parse(ROOT).root,
       whenReady: () => ({ then(fn) { ready = fn; } }), on: (name, fn) => callbacks.set(name, fn), quit() {} } } });
   ready(); equal(windows.length, 1);
@@ -1325,6 +1326,7 @@ test('encryption: main passes the exact safeStorage dependency to auth only afte
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
     './signal/channel': { init: () => {} },
+    './messages-ipc': { init: () => {} },
     './ipc': { registerIpc: () => { throw stop; } },
     electron: { safeStorage: secure.api, BrowserWindow: function () { throw new HarnessError('GUI forbidden'); },
       app: { setName() {}, getPath(name) { equal(name, 'userData'); return fakeDirectory; },
