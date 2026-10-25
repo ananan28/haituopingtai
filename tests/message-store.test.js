@@ -71,10 +71,12 @@ test('pagination is stable with identical timestamps and resumes without missing
 test('second database connection cannot attach a stale translation after a source edit', t => {
   const { store, directory, record, translation } = fixture(t);
   store.put('server:one', record);
-  const other = new MessageStore(directory); t.after(() => other.close());
+  const other = new MessageStore(directory);
+  try {
   other.put('server:one', { ...record, body: 'Edited elsewhere' });
   assert.throws(() => store.translate('server:one', translation));
   assert.equal(other.get('server:one', record).translation, null);
+  } finally { other.close(); }
 });
 
 test('parameterized message content round trips quotes, SQL-like strings, HTML and Unicode', t => {
