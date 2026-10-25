@@ -2,13 +2,13 @@
 node_modules/
 # Signal 原生依赖（随源码迁入，非 npm 管理）
 !signal/native-modules/node_modules/
-!signal/build/
 
 # 构建产物
 dist/
 dist-*/
 out/
 build/
+!signal/build/
 release/
 
 # 密钥与环境变量（真实 key 绝不入库）
