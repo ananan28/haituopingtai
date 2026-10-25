@@ -6,37 +6,19 @@
  *  - 不 spawn 独立进程、不做子窗口/原生窗口跟随；
  *  - 每账号 = 同一进程内一个 Signal 会话（WebContentsView + 独立 persist 分区，见 P3）。
  *
- * 本模块只负责"让 bundle 能 require 且启动不崩"（P0）：
- *  1. @signalapp/@indutny 原生依赖解析到 signal/native-modules；
- *  2. bundle 内 app.getAppPath() 指向 signal/（config/build/_locales 按旧布局解析）；
- *  3. dev(isPackaged=false) 下 locale 读 messages.json，已随源码从 keys.json+values.json 生成。
+ * 原生依赖（@signalapp/@indutny/node-gyp-build/...）位于 signal/node_modules，
+ * 主进程与渲染器 preload 均按 Node 标准解析，无需额外钩子。
+ * dev(isPackaged=false) 下 locale 读 messages.json，已随源码从 keys.json+values.json 生成。
  */
 const path = require('node:path');
-const fs = require('node:fs');
-const Module = require('node:module');
 
 const SIGNAL_ROOT = __dirname;
-const NATIVE = path.join(SIGNAL_ROOT, 'native-modules');
-
-let origResolve = null;
-function installResolution() {
-  if (origResolve) return;
-  origResolve = Module._resolveFilename;
-  Module._resolveFilename = function (request, parent, isMain, options) {
-    if (typeof request === 'string' && (request.startsWith('@signalapp/') || request.startsWith('@indutny/'))) {
-      const candidate = path.join(NATIVE, request);
-      const hit = [candidate, candidate + '.js', path.join(candidate, 'package.json')].some((p) => fs.existsSync(p));
-      if (hit) return origResolve.call(this, candidate, parent, isMain, options);
-    }
-    return origResolve.call(this, request, parent, isMain, options);
-  };
-}
+const NATIVE = path.join(SIGNAL_ROOT, 'node_modules');
 
 let loaded = false;
 
 function mount(opts = {}) {
   if (loaded) return false;
-  installResolution();
   const { app } = require('electron');
   // bundle 内 config/构建脚本用 app.getAppPath() 定位 config/build/_locales
   try { app.getAppPath = () => SIGNAL_ROOT; } catch (_) { /* 只读则忽略，交由调用方保证路径 */ }
@@ -55,4 +37,19 @@ function isMounted() {
   return loaded;
 }
 
-module.exports = { mount, isMounted, ROOT: SIGNAL_ROOT, NATIVE };
+// Signal 渲染器（background.html）在 WebContentsView 中承载所需的 webPreferences
+// （与 bundle 主窗口一致：sandbox:false，contextIsolation:true —— preload 用 contextBridge 暴露 startApp）。
+function rendererPreferences(profile) {
+  return {
+    nodeIntegration: false,
+    nodeIntegrationInWorker: false,
+    webviewTag: true,
+    sandbox: false,
+    contextIsolation: true,
+    spellcheck: true,
+    preload: path.join(SIGNAL_ROOT, 'bundles', 'preload', 'wrapper.js'),
+    additionalArguments: profile && profile !== 'signal-main' ? ['--caisheng-renderer-profile=' + profile] : []
+  };
+}
+
+module.exports = { mount, isMounted, rendererPreferences, ROOT: SIGNAL_ROOT, NATIVE };
