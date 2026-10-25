@@ -789,12 +789,19 @@ function buildEmbed(acc) {
     if (!text || text.length > 10000) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    // 译文常驻贴附：发送即译，译文永久贴在原消息下（双语对照），不临时显示、不等回帖。
+    let tr = '';
+    try {
+      const res = window.HaituoStudio ? window.HaituoStudio.runPanelTranslation(text) : { ok: false };
+      if (res && res.ok) tr = res.translation;
+    } catch (_) { /* 翻译失败仅隐藏译文，不影响发送 */ }
     const row = document.createElement('div');
     row.className = 'em-msg is-out';
     row.innerHTML = `<span class="em-msg-avatar is-me">我</span>
       <div class="em-msg-main">
         <div class="em-msg-meta"><span>我</span><span>${time}</span></div>
         <div class="em-bubble">${escapeHtml(text)}</div>
+        ${tr ? `<div class="em-tr"><span class="em-tr-tag">译</span><span>${escapeHtml(tr)}</span></div>` : ''}
       </div>`;
     list.appendChild(row);
     input.value = '';
