@@ -1,0 +1,43 @@
+[
+  {
+    "package": "@signalapp/libsignal-client",
+    "version": "0.100.0",
+    "integrity": "sha512-pS67moiIxs3h0kcO81Y9FrGbquh5xo2jyG9RG/+YyDEL6Bcz33IR5fCTdfpnYJR4pd3CoutJNbyUnieMGCpI4Q==",
+    "source": "npm registry",
+    "restored": 211
+  },
+  {
+    "package": "@signalapp/ringrtc",
+    "version": "2.71.0",
+    "integrity": "sha512-F75ix86XyYoA14x3yPoPwxr6TUq4pdWKhHLcPfZxRR/0xxrvo8PXHvDw5d95YOoi8BJfE0by6DxgrwG9DyvE0Q==",
+    "source": "npm registry",
+    "restored": 12
+  },
+  {
+    "package": "@signalapp/sqlcipher",
+    "version": "4.1.0",
+    "integrity": "sha512-B4K2xIVVEoKq+eVARKZPnJzJiJD2YIe42ZMObp7bmKCL7KGBS1V9Sd5lMGXOcE4wbFrTYkWwYC9jAN6+Eft6Uw==",
+    "source": "npm registry",
+    "restored": 3
+  },
+  {
+    "package": "@indutny/simple-windows-notifications",
+    "version": "2.0.21",
+    "integrity": "sha512-qJEd8Ly34cEB2Vy5qvtaTAA/BzCdFZkW4cYE8gBgxksMONhTgXhvdL0Fs8ljbXyiAzxbwQpzODEQcxzSvpjedw==",
+    "source": "npm registry",
+    "restored": 3
+  },
+  {
+    "package": "google-libphonenumber",
+    "version": "3.2.44",
+    "integrity": "sha512-9p2TghluF2LTChFMLWsDRD5N78SZDsILdUk4gyqYxBXluCyxoPiOq+Fqt7DKM+LUd33+OgRkdrc+cPR93AypCQ==",
+    "source": "npm registry",
+    "restored": 1
+  },
+  {
+    "package": "@signalapp/windows-ucv",
+    "version": "1.0.1",
+    "source": "matching-version Windows source attachment",
+    "restored": 1
+  }
+]

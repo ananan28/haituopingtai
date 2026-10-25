@@ -81,7 +81,9 @@ contextBridge.exposeInMainWorld('haituo', {
     open: (accountId) => ipcRenderer.invoke('signal:open', accountId),
     setBounds: (accountId, rect) => ipcRenderer.invoke('signal:setBounds', accountId, rect),
     setVisible: (accountId, visible) => ipcRenderer.invoke('signal:setVisible', accountId, visible),
-    sleep: (accountId) => ipcRenderer.invoke('signal:sleep', accountId)
+    sleep: (accountId) => ipcRenderer.invoke('signal:sleep', accountId),
+    refresh: (accountId) => ipcRenderer.invoke('signal:refresh', accountId),
+    destroyAll: () => ipcRenderer.invoke('signal:destroyAll')
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

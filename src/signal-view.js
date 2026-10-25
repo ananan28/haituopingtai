@@ -69,9 +69,8 @@
   }
 
   function destroyAll() {
-    const acc = active && active.acc;
     teardown();
-    if (api && acc) api.sleep(acc.id);
+    if (api) api.destroyAll();
   }
 
   function build(acc, isValid, actions) {
@@ -142,10 +141,16 @@
       loadingEl.classList.remove('is-hidden');
       loadingText.textContent = '正在刷新…';
       statusEl.textContent = '刷新中…';
-      api.open(acc.id).then((res) => {
+      api.refresh(acc.id).then((res) => {
         if (!active || active.acc !== acc || !root.isConnected) return;
         if (res && res.ok) { loadingEl.classList.add('is-hidden'); statusEl.textContent = 'Signal 会话已启动'; syncBounds(); }
-        else { active.failed = true; loadingText.textContent = '刷新失败'; statusEl.textContent = (res && res.error) || '刷新失败'; }
+        else { active.failed = true; loadingText.textContent = '刷新失败'; statusEl.textContent = (res && res.error) || '刷新失败'; syncVisibility(); }
+      }).catch(() => {
+        if (!active || active.acc !== acc || !root.isConnected) return;
+        active.failed = true;
+        loadingText.textContent = '刷新失败';
+        statusEl.textContent = '服务不可用';
+        syncVisibility();
       });
     });
     root.querySelector('[data-sig="sleep"]').addEventListener('click', () => {

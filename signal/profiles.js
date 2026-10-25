@@ -8,24 +8,31 @@
  * 本模块无 electron 依赖，纯函数 + 内存映射，便于单测。
  */
 const path = require('node:path');
+const { storageToken } = require('../src/channel-identity');
 
 // accountId -> profile 名（bundle 用 /^signal-[\w-]+/ 识别；signal-main 为主账号）。
-function profileForAccount(accountId) {
-  const safe = String(accountId).replace(/[^a-zA-Z0-9_-]/g, '-');
-  return 'signal-' + safe;
+function profileForAccount(accountId, scope) {
+  // 55 characters, within the bundle's 64-character profile argument limit.
+  return 'signal-' + storageToken(scope, 'signal', accountId).slice(0, 48);
 }
 
 // profile -> userData 目录。沿用旧海拓约定 %APPDATA%/Haituo/SignalProfiles/<profile>，
 // 使 SQL worker 的 configDir/sql/db.sqlite 与旧实现一致。
 function userDataForProfile(profile, appData) {
-  return path.join(appData, 'Haituo', 'SignalProfiles', String(profile));
+  if (typeof profile !== 'string' || !/^signal-[a-zA-Z0-9_-]{1,57}$/.test(profile)) {
+    throw new TypeError('Invalid Signal profile');
+  }
+  return path.join(appData, 'Haituo', 'SignalProfiles', profile);
 }
 
 // webContents.id -> profile：SQL 客户端按 event.sender 路由。
 const webContentsProfiles = new Map();
 
 function bindWebContents(webContents, profile) {
-  if (webContents && !webContents.isDestroyed()) webContentsProfiles.set(webContents.id, profile);
+  if (webContents && !webContents.isDestroyed()) {
+    webContentsProfiles.set(webContents.id, profile);
+    webContents.once('destroyed', () => webContentsProfiles.delete(webContents.id));
+  }
 }
 
 function unbindWebContents(webContents) {

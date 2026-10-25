@@ -15,6 +15,7 @@ const { WebContentsView, ipcMain, app } = require('electron');
 const path = require('node:path');
 const signal = require('./index.js');
 const profiles = require('./profiles.js');
+const { accountAllowed } = require('../src/channel-identity');
 
 let access = null;
 function getAccess() {
@@ -42,11 +43,7 @@ function signalAllowed(event, accountId) {
   const acc = getAccess();
   if (!acc.can('account')) return false;
   if (typeof accountId !== 'string' || !ACCOUNT_ID_RE.test(accountId)) return false;
-  const identity = acc.current();
-  if (!identity || !Array.isArray(identity.accountIds)) return false;
-  return identity.accountIds.some((id) => id === accountId
-    || String(id).endsWith(':' + accountId)
-    || accountId.endsWith(':' + String(id)));
+  return accountAllowed(acc.current(), accountId);
 }
 
 function clampBounds(rect) {
@@ -66,6 +63,7 @@ function destroy(accountId) {
   if (win) {
     try { win.contentView.removeChildView(entry.view); } catch { /* 已移除则忽略 */ }
   }
+  profiles.unbindWebContents(entry.view.webContents);
   try {
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
   } catch { /* 关闭失败不阻断 */ }
@@ -90,7 +88,7 @@ function createView(accountId) {
   const view = new WebContentsView({ webPreferences: signal.rendererPreferences('signal-main') });
   const wc = view.webContents;
   // 绑定 webContents -> profile，供 bundle 内 SQL 客户端按 event.sender 路由（P4）
-  profiles.bindWebContents(wc, profiles.profileForAccount(accountId));
+  profiles.bindWebContents(wc, profiles.profileForAccount(accountId, getAccess().current().scope));
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (event) => event.preventDefault());
 
@@ -108,6 +106,9 @@ function init(options = {}) {
   if (!registered) {
     registered = true;
     app.on('before-quit', destroyAll);
+    getAccess().onChange(destroyAll);
+  } else {
+    return;
   }
 
   ipcMain.handle('signal:open', (event, accountId) => {
@@ -127,6 +128,18 @@ function init(options = {}) {
     const entry = views.get(accountId);
     if (!entry || entry.view.webContents.isDestroyed()) return { ok: true };
     entry.view.setVisible(Boolean(visible));
+    return { ok: true };
+  });
+  ipcMain.handle('signal:destroyAll', (event) => {
+    if (!trustedOnly(event)) return { ok: false, error: '无权限' };
+    destroyAll();
+    return { ok: true };
+  });
+  ipcMain.handle('signal:refresh', (event, accountId) => {
+    if (!signalAllowed(event, accountId)) return { ok: false, error: '无权限' };
+    const entry = views.get(accountId);
+    if (!entry || entry.view.webContents.isDestroyed()) return { ok: false, error: '会话未启动' };
+    entry.view.webContents.reload();
     return { ok: true };
   });
   ipcMain.handle('signal:sleep', (event, accountId) => {

@@ -36,7 +36,8 @@ async function shot(name) {
   await js('await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));');
   const image = await win.webContents.capturePage();
   fs.writeFileSync(path.join(OUT, name + '.png'), image.toPNG());
-  check('capture ' + name, !image.isEmpty());
+  const size = image.getSize();
+  check('capture ' + name, !image.isEmpty() && size.width >= 1024 && size.height >= 640, size);
 }
 async function login(role) {
   await fill('#demo-role', role);
@@ -50,6 +51,17 @@ async function logout() {
 }
 async function run() {
   require('./ipc').registerIpc();
+  // Non-Windows runners cannot enumerate Windows fonts. Keep UI rendering deterministic;
+  // authorization of the production font handler is covered by runtime-security.
+  if (process.platform !== 'win32') {
+    const { ipcMain } = require('electron');
+    ipcMain.removeHandler('system:fonts');
+    ipcMain.handle('system:fonts', (event) => {
+      const access = require('./runtime-access');
+      return access.trusted(event) && access.can('appearance')
+        ? { ok: true, fonts: ['Arial'] } : { ok: false, error: '无权限' };
+    });
+  }
   const pkg = require('./package.json');
   win = new BrowserWindow({ width: 1280, height: 820, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, offscreen: true, backgroundThrottling: false, additionalArguments: ['--haituo-brand=' + encodeURIComponent(pkg.productName), '--haituo-version=' + encodeURIComponent(pkg.version)] } });
   require('./runtime-access').bindWindow(win.webContents);
@@ -57,16 +69,21 @@ async function run() {
   win.webContents.on('console-message', (_e, level, message) => { if (level >= 3) errors.push(message); });
   win.webContents.on('render-process-gone', (_e, detail) => errors.push(JSON.stringify(detail)));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  require('./app-settings').registerIpc();
   require('./screenshot').init({ getMainWindow: () => win });
+  require('./src/webchannels').init({ getMainWindow: () => win });
+  require('./signal/channel').init({ getMainWindow: () => win });
   await win.loadFile(path.join(__dirname, 'src', 'index.html'));
   await wait(`!document.querySelector('#demo-login').disabled && typeof HaituoStudio.resetSession==='function'`);
+  check('startup enters explicit offline owner preview', await js(`return HaituoAccess.get()?.demo===true&&HaituoAccess.get()?.role==='owner'&&document.querySelector('#app-view').classList.contains('is-active');`));
+  await logout();
   if (restartIndex >= 0) {
-    check('process restart does not restore demo identity', await js(`return !HaituoAccess.get()&&document.querySelector('#auth-view').classList.contains('is-active');`));
+    check('restart sign-out clears preview identity', await js(`return !HaituoAccess.get()&&document.querySelector('#auth-view').classList.contains('is-active');`));
     await login('user');
-    await js(`selectAccount('wa-lea');`);
+    await js(`selectAccount('demo:wa-lea');`);
     await wait(`getComputedStyle(document.querySelector('.em-bubble')).fontFamily.includes('Arial')`);
     check('process restart preserves merchant draft and colors', await js(`return document.querySelector('#em-input').value.includes('retained draft')&&getComputedStyle(document.querySelector('.em-bubble')).backgroundColor==='rgb(34, 51, 68)';`));
-    await logout(); await login('staff'); await js(`selectAccount('wa-lea');`);
+    await logout(); await login('staff'); await js(`selectAccount('demo:wa-lea');`);
     check('process restart preserves staff draft separately', await js(`return document.querySelector('#em-input').value==='staff-only draft'&&getComputedStyle(document.querySelector('.em-bubble')).backgroundColor!=='rgb(34, 51, 68)';`));
     check('restart remains hidden and offline', !focused && !win.isVisible() && businessCalls === 0 && errors.length === 0);
     return;
@@ -84,15 +101,15 @@ async function run() {
   await wait(`state.view==='me'`);
   check('personal center opens from user trigger', await js(`return state.view==='me'&&document.querySelector('#content').textContent.includes('个人中心')&&!!document.querySelector('.personal-profile')&&document.querySelector('#user-menu').hidden;`));
   await shot('17-personal-center');
-  await js(`selectAccount('wa-lea');`);
+  await js(`selectAccount('demo:wa-lea');`);
   await fill('#em-input', '<img src=x onerror="window.__xss=1"> retained draft');
   await click('[data-tool="home"]');
-  await js(`selectAccount('wa-lea');`);
-  check('home retains selected account and draft', await js(`return state.activeId==='wa-lea' && document.querySelector('#em-input').value.includes('retained draft') && !window.__xss;`));
+  await js(`selectAccount('demo:wa-lea');`);
+  check('home retains selected account and draft', await js(`return state.activeId==='demo:wa-lea' && document.querySelector('#em-input').value.includes('retained draft') && !window.__xss;`));
   await js(`selectPage('appearance');`);
   await wait(`document.querySelector('#appearance-font').options.length>1`, 15000);
   check('installed fonts enumerated', await js(`return document.querySelector('#appearance-font').options.length>1;`));
-  await fill('#appearance-account', 'wa-lea');
+  await fill('#appearance-account', 'demo:wa-lea');
   await fill('#appearance-font', 'Arial');
   await fill('#appearance-size', '18');
   await fill('#appearance-incoming', '#223344');
@@ -104,32 +121,32 @@ async function run() {
   await shot('03-appearance');
   await fill('#appearance-outgoing', 'url(x)');
   await click('#appearance-save');
-  check('color injection rejected', await js(`return document.querySelector('#appearance-status').textContent.includes('保存失败') && HaituoPlatform.read('appearance',{},'wa-lea').outgoing==='#654321';`));
+  check('color injection rejected', await js(`return document.querySelector('#appearance-status').textContent.includes('保存失败') && HaituoPlatform.read('appearance',{},'demo:wa-lea').outgoing==='#654321';`));
   await fill('#appearance-outgoing', '#654321');
   await js(`const o=document.createElement('option');o.value='Arial; background:url(x)';o.textContent=o.value;document.querySelector('#appearance-font').appendChild(o);document.querySelector('#appearance-font').value=o.value;`);
   await click('#appearance-save');
   check('forged font rejected', await js(`return document.querySelector('#appearance-status').textContent.includes('保存失败');`));
-  await js(`selectAccount('wa-lea');`);
+  await js(`selectAccount('demo:wa-lea');`);
   check('appearance affects actual conversation', await js(`const b=getComputedStyle(document.querySelector('.em-bubble'));return b.backgroundColor==='rgb(34, 51, 68)'&&b.fontSize==='18px'&&b.fontFamily.includes('Arial');`));
   await shot('04-custom-conversation');
   await js(`selectPage('appearance');`);
   await wait(`document.querySelector('#appearance-font').options.length>1`);
-  await fill('#appearance-account', 'tg-chen');
+  await fill('#appearance-account', 'demo:tg-chen');
   await fill('#appearance-incoming', '#334455');
   await click('#appearance-save');
-  check('appearance independent between accounts', await js(`return HaituoPlatform.read('appearance',{},'wa-lea').incoming==='#223344'&&HaituoPlatform.read('appearance',{},'tg-chen').incoming==='#334455';`));
+  check('appearance independent between accounts', await js(`return HaituoPlatform.read('appearance',{},'demo:wa-lea').incoming==='#223344'&&HaituoPlatform.read('appearance',{},'demo:tg-chen').incoming==='#334455';`));
   await click('#appearance-reset');
-  check('reset affects selected account only', await js(`return HaituoPlatform.read('appearance',{},'tg-chen').incoming==='#1a1d24'&&HaituoPlatform.read('appearance',{},'wa-lea').incoming==='#223344';`));
+  check('reset affects selected account only', await js(`return HaituoPlatform.read('appearance',{},'demo:tg-chen').incoming==='#1a1d24'&&HaituoPlatform.read('appearance',{},'demo:wa-lea').incoming==='#223344';`));
   await fill('#appearance-account', '');
   await fill('#appearance-font', 'Arial');
   await fill('#appearance-size', '16');
   await click('#appearance-save');
   check('shell typography applies', await js(`return getComputedStyle(document.querySelector('#app-view')).fontSize==='16px'&&getComputedStyle(document.querySelector('#app-view')).fontFamily.includes('Arial');`));
   await click('#appearance-reset');
-  await js(`selectAccount('wa-lea');openEditAccount(activeAccount());`);
+  await js(`selectAccount('demo:wa-lea');openEditAccount(activeAccount());`);
   await fill('#edit-avatar', '<b>');
   await js(`editForm.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));applyMode('vertical',false);`);
-  check('custom avatar overrides official artwork without HTML', await js(`return [...document.querySelectorAll('[data-account="wa-lea"] .ch-tile, .em-tile')].every(e=>!e.querySelector('img')&&!e.querySelector('b')&&e.textContent.includes('<b>'));`));
+  check('custom avatar overrides official artwork without HTML', await js(`return [...document.querySelectorAll('[data-account="demo:wa-lea"] .ch-tile, .em-tile')].every(e=>!e.querySelector('img')&&!e.querySelector('b')&&e.textContent.includes('<b>'));`));
   await shot('15-vertical-custom-avatar');
   await js(`openEditAccount(activeAccount());`);
   await fill('#edit-avatar', '');
@@ -185,17 +202,17 @@ async function run() {
   await logout();
   check('logout clears studio and cached content', await js(`return HaituoStudio.getState().shots===0&&HaituoStudio.getUsage().chars===0&&document.querySelector('#content').children.length===0&&document.querySelector('#shot-canvas').width===0;`));
   await login('staff');
-  check('staff assigned one account', await js(`return state.accounts.length===1&&state.accounts[0].id==='wa-lea';`));
+  check('staff assigned one account', await js(`return state.accounts.length===1&&state.accounts[0].id==='demo:wa-lea';`));
   check('staff page denied without staff:manage', await js(`selectPage('staff');return state.view==='home';`));
-  check('departed composer cannot write new identity draft', await js(`__departingInput.value='STALE PRIVATE DRAFT';__departingInput.dispatchEvent(new Event('input',{bubbles:true}));return HaituoPlatform.read('draft','','wa-lea')==='';`));
-  check('staff recharge screenshot providers denied', await js(`selectPage('recharge');selectAccount('tg-chen');HaituoStudio.openDemoStudio('translate');return state.view==='home'&&state.activeId==='wa-lea'&&!HaituoStudio.isOpen()&&!HaituoAccess.can('providers');`));
+  check('departed composer cannot write new identity draft', await js(`__departingInput.value='STALE PRIVATE DRAFT';__departingInput.dispatchEvent(new Event('input',{bubbles:true}));return HaituoPlatform.read('draft','','demo:wa-lea')==='';`));
+  check('staff recharge screenshot providers denied', await js(`selectPage('recharge');selectAccount('demo:tg-chen');HaituoStudio.openDemoStudio('translate');return state.view==='home'&&state.activeId==='demo:wa-lea'&&!HaituoStudio.isOpen()&&!HaituoAccess.can('providers');`));
   check('staff direct screenshot OCR IPC denied', await js(`const a=await haituo.screenshot.start('translate');const b=await haituo.ocr.recognize('data:image/png;base64,AA==');return !a.ok&&!b.ok;`));
-  check('staff storage cannot read unassigned account', await js(`return HaituoPlatform.write('draft','forbidden','tg-chen')===false&&HaituoPlatform.read('draft',null,'tg-chen')===null;`));
+  check('staff storage cannot read unassigned account', await js(`return HaituoPlatform.write('draft','forbidden','demo:tg-chen')===false&&HaituoPlatform.read('draft',null,'demo:tg-chen')===null;`));
   await shot('08-staff-home');
   await js(`selectPage('usage');`);
   check('staff quota consistent', await js(`return document.querySelector('#content').textContent.includes('50,000')&&document.querySelector('#content').textContent.includes('46,800')&&quotaFor(state.accounts[0]).total===50000;`));
   await shot('09-staff-quota');
-  await js(`selectAccount('wa-lea');`);
+  await js(`selectAccount('demo:wa-lea');`);
   check('merchant draft and colors isolated from staff', await js(`return document.querySelector('#em-input').value===''&&getComputedStyle(document.querySelector('.em-bubble')).backgroundColor!=='rgb(34, 51, 68)';`));
   await fill('#em-input', 'staff-only draft');
   await logout();
@@ -222,12 +239,14 @@ async function run() {
   await shot('13-owner-model-preview');
   await logout();
   await login('user');
-  await js(`selectAccount('wa-lea');`);
+  await js(`selectAccount('demo:wa-lea');`);
   check('merchant draft and appearance persist reentry', await js(`return document.querySelector('#em-input').value.includes('retained draft')&&getComputedStyle(document.querySelector('.em-bubble')).backgroundColor==='rgb(34, 51, 68)';`));
   await win.webContents.session.flushStorageData();
   await win.loadFile(path.join(__dirname, 'src', 'index.html'));
-  await wait(`document.querySelector('#app-view').classList.contains('is-active')`);
-  await js(`selectAccount('wa-lea');`);
+  await wait(`HaituoAccess.get()?.role==='owner'&&document.querySelector('#app-view').classList.contains('is-active')`);
+  await logout();
+  await login('user');
+  await js(`selectAccount('demo:wa-lea');`);
   check('renderer reload retains scoped draft', await js(`return document.querySelector('#em-input').value.includes('retained draft');`));
   await logout();
   win.setSize(1024, 640);
