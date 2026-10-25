@@ -5,7 +5,7 @@ const asar = require('@electron/asar');
 const pkg = require('../package.json');
 
 function verify(archive) {
-  const entries = new Set(asar.listPackage(archive).map(name => name.replace(/^\//, '')));
+  const entries = new Set(asar.listPackage(archive).map(name => name.replace(/\\/g, '/').replace(/^\/+/, '')));
   const required = [
     'main.js', 'preload.js', 'src/index.html', 'src/channel-identity.js',
     'signal/index.js', 'signal/channel.js', 'signal/profiles.js',
