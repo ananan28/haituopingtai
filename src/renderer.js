@@ -5,7 +5,20 @@ const PAGE_TABS = window.HAITUO_PAGE_TABS || [];
 const TITLE_TOOLS = window.HAITUO_TITLE_TOOLS || [];
 const CATALOG = window.HAITUO_CHANNEL_CATALOG || [];
 const BRAND = (window.haituo && window.haituo.brand) || { name: '海拓商业版', version: '0.1.0' };
-const ROLE_LABELS = { owner: '所有者', agent: '代理', user: '用户' };
+const ROLE_LABELS = { owner: '所有者', admin: '管理员', user: '商户 / 代理', staff: '员工子账号' };
+const Access = window.HaituoAccess;
+const Platform = window.HaituoPlatform;
+
+function requirePermission(permission) {
+  if (Access.can(permission)) return true;
+  showGlobalToast('未获授权，无法执行此操作');
+  return false;
+}
+
+// 页面 id 与权限点的映射：页面 id 不再一一对应权限点（staff/permissions/me 是复合页面）。
+function pagePermission(id) {
+  return ({ staff: 'staff:manage', permissions: 'role:manage', me: 'home', appsettings: 'appearance' })[id] || id;
+}
 
 const CHANNEL_ALIASES = {
   whatsapp: { name: 'WhatsApp', icon: 'W' },
@@ -38,7 +51,8 @@ function channelMeta(id) {
 
 function readStorage(key, fallback) {
   try {
-    const raw = localStorage.getItem(key);
+    const scoped = Access.key(key);
+    const raw = scoped ? localStorage.getItem(scoped) : null;
     return raw == null ? fallback : raw;
   } catch {
     return fallback;
@@ -47,10 +61,11 @@ function readStorage(key, fallback) {
 
 function writeStorage(key, value) {
   try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* 本地存储不可用时仅当前会话生效 */
-  }
+    const scoped = Access.key(key);
+    if (!scoped) return false;
+    localStorage.setItem(scoped, value);
+    return true;
+  } catch { return false; }
 }
 
 /* ---------- 图标 ---------- */
@@ -305,6 +320,7 @@ function bindWindowControls() {
 /* ---------- 认证 ---------- */
 
 let authMode = 'login';
+let authenticating = false;
 
 function setMode(next) {
   authMode = next;
@@ -321,19 +337,60 @@ function setAuthMessage(text, isOk) {
   authMsg.classList.toggle('is-ok', Boolean(text) && Boolean(isOk));
 }
 
+function clearEditPreview() {
+  state.editingId = null;
+  editName.value = '';
+  editAvatar.value = '';
+  if (editNamePreview) editNamePreview.textContent = '';
+  if (editSubPreview) editSubPreview.textContent = '';
+  if (editAvatarPreview) {
+    editAvatarPreview.innerHTML = '';
+    delete editAvatarPreview.dataset.channel;
+  }
+}
+
+// 由 HaituoAccess 在每次身份切换（含公开 enterDemo/signIn/signOut 入口）时调用，
+// 保证旧身份的编辑预览与截图状态不跨身份残留。
+window.__haituoResetTransient = clearEditPreview;
+
 function showAuth(message, isOk) {
+  Access.clear();
   closeAllOverlays();
+  if (window.HaituoStudio) window.HaituoStudio.resetSession();
+  clearEditPreview();
+  panelCache.clear();
+  fxPanelBody.replaceChildren();
+  sheetBody.replaceChildren();
+  quotaBody.replaceChildren();
+  contextMenu.replaceChildren();
+  editForm.reset();
+  channelForm.reset();
+  const lock = document.getElementById('lock-screen');
+  if (lock) lock.hidden = true;
+  userName.textContent = '';
+  userAvatar.textContent = '';
+  roleBadge.textContent = '';
+  content.replaceChildren();
+  acctChips.replaceChildren();
+  railAccounts.replaceChildren();
+  userMenu.replaceChildren();
+  state.user = null;
+  state.role = null;
+  state.accounts = [];
+  state.activeId = null;
+  state.pendingChannel = null;
+  state.editingId = null;
   state.demo = false;
   appView.classList.remove('is-active');
   authView.classList.add('is-active');
   setAuthMessage(message, isOk);
 }
 
-function showApp(user) {
-  const email = (user && user.email) || (typeof user === 'string' ? user : '') || '';
-  const role = (user && user.role) || 'user';
-  const demo = Boolean(user && user.demo);
-  state.user = { email, role, demo };
+function showApp() {
+  const user = Access.get();
+  if (!user || !Access.can('home')) return showAuth('身份未验证，无法进入工作台');
+  const { email, role, demo } = user;
+  state.user = user;
   state.role = role;
   state.demo = demo;
 
@@ -341,21 +398,30 @@ function showApp(user) {
   appView.classList.add('is-active');
   userAvatar.textContent = demo ? '演' : email.charAt(0).toUpperCase();
   userName.textContent = demo ? '离线演示账号' : email;
-  roleBadge.textContent = demo ? '离线演示' : (ROLE_LABELS[role] || role);
+  roleBadge.textContent = demo ? '离线演示 · ' + ROLE_LABELS[role] : ROLE_LABELS[role];
   roleBadge.dataset.role = demo ? 'demo' : role;
-  roleBadge.title = demo ? '本地演示数据 · 所有者权限' : '';
+  roleBadge.title = demo ? '本地样例 · 不具有服务器权限' : '角色已由服务器核验';
   setAuthMessage('');
 
   enterWorkspace();
 }
 
 function enterWorkspace() {
-  state.accounts = (window.HAITUO_ACCOUNTS || []).map((a) => ({
-    ...a,
-    ui: { font: 'md', density: 3, ...(a.ui || {}) }
-  }));
+  panelCache.clear();
+  fxPanelBody.replaceChildren();
+  if (window.HaituoStudio) window.HaituoStudio.resetSession();
+  state.accounts = (window.HAITUO_ACCOUNTS || []).filter((a) => Access.account(a.id)).map((a) => {
+    const saved = Platform.read('account', {}, a.id);
+    return { ...a, name: typeof saved.name === 'string' ? saved.name.slice(0, 24) : a.name,
+      avatar: typeof saved.avatar === 'string' ? saved.avatar.slice(0, 4) : a.avatar,
+      draft: String(Platform.read('draft', '', a.id)).slice(0, 10000),
+      ui: { font: ['sm', 'md', 'lg'].includes(saved.font) ? saved.font : 'md', density: [1, 2, 3, 4, 5].includes(saved.density) ? saved.density : 3 } };
+  });
+  state.mode = readStorage(STORAGE.mode, 'horizontal') === 'vertical' ? 'vertical' : 'horizontal';
+  try { state.hiddenFx = JSON.parse(readStorage(STORAGE.hidden, '[]')).filter((id) => FEATURES.some((f) => f.id === id)); } catch { state.hiddenFx = []; }
   state.activeId = state.accounts[0] ? state.accounts[0].id : null;
-  state.view = 'account';
+  state.view = 'home';
+  state.sysUnread = 0;
   state.fxOpen = false;
   state.collapsed = false;
   state.editingId = null;
@@ -371,13 +437,24 @@ function enterWorkspace() {
   renderAccounts();
   renderPageTabs();
   renderContent();
-  buildUserMenu();
   renderFxManager();
   syncRailActive();
+  acctAdd.hidden = !Access.can('catalog');
+  railAdd.hidden = !Access.can('catalog');
+  applyShellAppearance();
+  Platform.loadFonts().then(() => {
+    applyShellAppearance();
+    const chat = content.querySelector('.em');
+    if (chat && state.activeId) Platform.applyAppearance(chat, state.activeId);
+  });
+}
+
+function applyShellAppearance() {
+  Platform.applyAppearance(appView, '');
 }
 
 function paintTitleTools() {
-  titleTools.innerHTML = TITLE_TOOLS.map((tool) =>
+  titleTools.innerHTML = TITLE_TOOLS.filter((tool) => Access.can(titlePermission(tool.id))).map((tool) =>
     `<button class="tb-tool" type="button" data-tool="${escapeHtml(tool.id)}" title="${escapeHtml(tool.name)}" aria-label="${escapeHtml(tool.name)}">${TITLE_ICONS[tool.id] || ICONS.more}</button>`
   ).join('');
 }
@@ -395,7 +472,7 @@ function chipHtml(acc) {
   const font = acc.ui && acc.ui.font ? acc.ui.font : 'md';
   const density = acc.ui && acc.ui.density ? acc.ui.density : 3;
   return `<button class="acct-chip fs-${escapeHtml(font)} den-${density}${active ? ' is-active' : ''}${acc.status === 'sleep' ? ' is-sleeping' : ''}" type="button" role="tab" aria-selected="${active}" data-account="${escapeHtml(acc.id)}" title="${escapeHtml(acc.name)} · ${escapeHtml(meta.name)}">
-    <span class="ch-tile acct-avatar" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}<i class="acct-presence"></i></span>
+    <span class="ch-tile acct-avatar" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}<i class="acct-presence"></i></span>
     <span class="acct-meta">
       <span class="acct-name">${escapeHtml(acc.name)}</span>
       <span class="acct-sub">${escapeHtml(meta.name)} · ${escapeHtml(accountStatusLabel(acc))}</span>
@@ -409,7 +486,7 @@ function railAccountHtml(acc) {
   const meta = channelMeta(acc.channel);
   const active = state.view === 'account' && acc.id === state.activeId;
   return `<button class="rail-account${active ? ' is-active' : ''}${acc.status === 'sleep' ? ' is-sleeping' : ''}" type="button" data-account="${escapeHtml(acc.id)}" title="${escapeHtml(acc.name)}">
-    <span class="ch-tile rail-avatar" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}<i class="acct-presence"></i></span>
+    <span class="ch-tile rail-avatar" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}<i class="acct-presence"></i></span>
     <span class="rail-account-copy">
       <strong>${escapeHtml(acc.name)}</strong>
       <small>${escapeHtml(meta.name)} · ${escapeHtml(accountStatusLabel(acc))}</small>
@@ -439,6 +516,7 @@ function renderAccounts() {
 }
 
 function selectAccount(id) {
+  if (!requirePermission('account') || !Access.account(id)) return;
   if (!state.accounts.some((a) => a.id === id)) return;
   state.activeId = id;
   state.view = 'account';
@@ -472,7 +550,7 @@ function bindAccountContainer(container) {
 /* ---------- 页签 / 内容 ---------- */
 
 function renderPageTabs() {
-  pageTabs.innerHTML = PAGE_TABS.map((tab) => {
+  pageTabs.innerHTML = PAGE_TABS.filter((tab) => Access.can(tab.id)).map((tab) => {
     const active = state.view === tab.id;
     let badge = tab.badge || 0;
     if (tab.id === 'system') badge = state.sysUnread;
@@ -486,9 +564,14 @@ function renderPageTabs() {
 function pageTabsClick(e) {
   const btn = e.target.closest('[data-page]');
   if (!btn) return;
-  const id = btn.dataset.page;
-  if (!PAGE_TABS.some((t) => t.id === id)) return;
+  selectPage(btn.dataset.page);
+}
+
+function selectPage(id) {
+  if (!['home', 'account', 'accounts', 'usage', 'staff', 'announcements', 'appearance', 'providers', 'recharge', 'tg', 'system', 'permissions', 'me', 'appsettings'].includes(id) || !requirePermission(pagePermission(id))) return;
   state.view = id;
+  closePanel();
+  closeAllOverlays();
   renderAccounts();
   renderPageTabs();
   renderContent();
@@ -502,7 +585,12 @@ function pageWrap(node) {
 }
 
 function renderContent() {
+  if (window.HaituoWebChannels) window.HaituoWebChannels.onBeforeRender();
   content.innerHTML = '';
+  if (!Access.can(pagePermission(state.view))) {
+    content.appendChild(Platform.denied());
+    return;
+  }
   const isAccount = state.view === 'account';
   content.classList.toggle('is-embed', isAccount);
   content.classList.toggle('is-page', !isAccount);
@@ -513,7 +601,16 @@ function renderContent() {
     content.appendChild(acc ? buildEmbed(acc) : buildEmptyWorkspace());
     return;
   }
-  if (state.view === 'recharge') content.appendChild(pageWrap(buildRechargePage()));
+  if (state.view === 'home') content.appendChild(pageWrap(Platform.home(state.accounts)));
+  else if (state.view === 'usage') content.appendChild(pageWrap(Platform.usage()));
+  else if (state.view === 'staff') content.appendChild(pageWrap(Platform.staffPage()));
+  else if (state.view === 'announcements') content.appendChild(pageWrap(Platform.announcements()));
+  else if (state.view === 'appearance') content.appendChild(pageWrap(Platform.appearancePage(state.accounts, applyShellAppearance)));
+  else if (state.view === 'permissions') content.appendChild(pageWrap(Platform.permissionCenter()));
+  else if (state.view === 'me') content.appendChild(pageWrap(Platform.personalCenter()));
+  else if (state.view === 'appsettings') content.appendChild(pageWrap(window.HaituoAppSettings.page()));
+  else if (state.view === 'providers') { content.appendChild(pageWrap(Platform.home(state.accounts))); window.HaituoStudio.openProviderPanel(); }
+  else if (state.view === 'recharge') content.appendChild(pageWrap(Platform.recharge()));
   else if (state.view === 'tg') content.appendChild(pageWrap(buildTgPage()));
   else if (state.view === 'system') content.appendChild(pageWrap(buildSystemPage()));
   else if (state.view === 'accounts') content.appendChild(pageWrap(buildAccountsPage()));
@@ -550,7 +647,7 @@ function embedHeadHtml(acc) {
   const status = accountStatusLabel(acc);
   return `<header class="em-head">
     <div class="em-peer">
-      <span class="ch-tile em-tile" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}</span>
+      <span class="ch-tile em-tile" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}</span>
       <div class="em-title">
         <strong>${escapeHtml(acc.name)}
           <span class="em-status ${acc.status === 'sleep' ? 'is-sleep' : 'is-live'}">${escapeHtml(status)}</span>
@@ -561,44 +658,33 @@ function embedHeadHtml(acc) {
       </div>
     </div>
     <div class="em-actions">
-      <span class="em-embed-note">内嵌 WebView · 独立会话分区</span>
+      <span class="em-embed-note">海拓演示 · 非官方聊天界面</span>
       <button class="bar-icon" type="button" data-em-refresh title="刷新服务">${ICONS.refresh}</button>
       <button class="bar-icon" type="button" data-more="${escapeHtml(acc.id)}" title="账号菜单">${ICONS.more}</button>
     </div>
   </header>`;
 }
 
-function fakeQr() {
-  let cells = '';
-  const finderOn = (r, c) => {
-    const rr = r < 7 ? r : r - 14;
-    const cc = c < 7 ? c : c - 14;
-    return rr === 0 || rr === 6 || cc === 0 || cc === 6 || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
-  };
-  for (let r = 0; r < 21; r++) {
-    for (let c = 0; c < 21; c++) {
-      const inFinder = (r < 7 && c < 7) || (r < 7 && c > 13) || (r > 13 && c < 7);
-      const on = inFinder ? finderOn(r, c) : ((r * 7 + c * 11 + r * c) % 5) < 2;
-      cells += `<i class="${on ? 'on' : ''}"></i>`;
-    }
-  }
-  return `<div class="fake-qr" aria-hidden="true">${cells}</div>`;
-}
-
 function buildEmbed(acc) {
+  if (!Access.can('account') || !Access.account(acc.id)) return Platform.denied();
+  const revision = Access.get().revision;
+  const currentAccount = () => Access.can('account') && Access.get().revision === revision
+    && Access.account(acc.id) && state.accounts.includes(acc);
   const root = document.createElement('div');
   root.className = 'em';
+  Platform.applyAppearance(root, acc.id);
   root.innerHTML = embedHeadHtml(acc);
 
   if (acc.status === 'sleep') {
     root.innerHTML += `<div class="em-state">
       <span class="em-state-icon">${ICONS.moon}</span>
       <h2>服务已休眠</h2>
-      <p>${escapeHtml(acc.name)} 的后台进程与内存已释放，唤醒后恢复登录态与会话。</p>
+      <p>${escapeHtml(acc.name)} 当前为休眠样例；尚未启动官方渠道进程，不代表真实释放内存。</p>
       <span class="em-state-meta">独立分区 ${escapeHtml(acc.partition)} · ${acc.unread || 0} 条未读</span>
       <button class="hp-primary em-state-btn" type="button" data-wake="${escapeHtml(acc.id)}">唤醒服务</button>
     </div>`;
     root.querySelector('[data-wake]').addEventListener('click', () => {
+      if (!currentAccount()) return;
       acc.status = 'online';
       renderAccounts();
       renderContent();
@@ -613,56 +699,40 @@ function buildEmbed(acc) {
     const meta = channelMeta(acc.channel);
     root.innerHTML += `<div class="em-login">
       <div class="login-card">
-        <span class="ch-tile login-channel" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}</span>
-        <h2>登录 ${escapeHtml(meta.name)} 账号</h2>
-        <p>为 ${escapeHtml(acc.name)} 分配独立会话分区，Cookie、指纹与缓存互不影响。</p>
-        <div class="login-tabs">
-          <button type="button" class="is-active" data-login-tab="qr">二维码</button>
-          <button type="button" data-login-tab="phone">手机号</button>
-          <button type="button" data-login-tab="email">邮箱</button>
-        </div>
-        <div data-login-pane="qr">
-          ${fakeQr()}
-          <span class="login-hint">打开手机 App 扫码登录</span>
-          <button class="hp-primary" type="button" data-login-sim>模拟扫码成功</button>
-        </div>
-        <div data-login-pane="phone" hidden>
-          <label class="cfg-label">手机号
-            <input class="fx-input" type="tel" placeholder="+33 6 12 34 56 78" />
-          </label>
-          <button class="hp-primary" type="button" data-login-sim>发送验证码并登录</button>
-        </div>
-        <div data-login-pane="email" hidden>
-          <label class="cfg-label">邮箱
-            <input class="fx-input" type="email" placeholder="name@company.com" />
-          </label>
-          <label class="cfg-label">密码
-            <input class="fx-input" type="password" placeholder="••••••••" />
-          </label>
-          <button class="hp-primary" type="button" data-login-sim>登录</button>
-        </div>
-        <span class="login-foot">${escapeHtml(acc.partition)} · 登录后进入内嵌 WebView</span>
+        <span class="ch-tile login-channel" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}</span>
+        <h2>${escapeHtml(meta.name)} 渠道尚未接入</h2>
+        <p>${escapeHtml(acc.name)} 当前仅为海拓演示。没有官方登录、真实 Cookie 分区或指纹适配器，请勿输入第三方密码。</p>
+        <button class="hp-primary" type="button" data-login-sim>查看海拓演示会话</button>
+        <span class="login-foot">${escapeHtml(acc.partition)} · 分区标识仅为样例</span>
       </div>
     </div>`;
-    root.querySelectorAll('[data-login-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        root.querySelectorAll('[data-login-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
-        root.querySelectorAll('[data-login-pane]').forEach((pane) => {
-          pane.hidden = pane.dataset.loginPane !== btn.dataset.loginTab;
-        });
-      });
-    });
     root.querySelectorAll('[data-login-sim]').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (!currentAccount()) return;
         acc.loggedIn = true;
-        acc.account = '已授权 · ' + acc.partition.slice(-4);
+        acc.account = '演示样例 · ' + acc.partition.slice(-4);
         renderAccounts();
         renderContent();
-        showGlobalToast('登录成功（演示）：' + acc.name);
+        showGlobalToast('已打开海拓演示会话：' + acc.name);
       });
     });
     bindEmbedHead(root, acc);
     return root;
+  }
+
+  // 新增渠道注册点：WhatsApp / Telegram 网页版用 WebContentsView 内嵌（见 webchannels-view.js）；演示账号走本地 mock，不加载真实网页
+  if (window.HaituoWebChannels && window.HaituoWebChannels.supports(acc) && !acc.demo) {
+    return window.HaituoWebChannels.build(acc, currentAccount, {
+      openMenu: openAccountMenu,
+      setSleep: (on) => {
+        if (!currentAccount()) return;
+        acc.status = on ? 'sleep' : 'online';
+        renderAccounts();
+        renderPageTabs();
+        renderContent();
+        showGlobalToast(on ? '服务已休眠，进程已释放' : '服务已唤醒：' + acc.name);
+      }
+    });
   }
 
   const meta = channelMeta(acc.channel);
@@ -688,7 +758,7 @@ function buildEmbed(acc) {
       </div>
       <div class="em-composer-meta">
         <span id="em-count">已输入 0 字符</span>
-        <span>发送后按字符计费 · M4 接入</span>
+        <span>本地演示，不发送、不扣真实额度</span>
         <span class="em-demo">演示会话 · 不连接真实渠道 · ${escapeHtml(meta.name)}</span>
       </div>
     </footer>`;
@@ -702,15 +772,21 @@ function buildEmbed(acc) {
   const count = root.querySelector('#em-count');
   const attach = root.querySelector('[data-em-attach]');
 
+  input.maxLength = 10000;
+  input.value = acc.draft || '';
   function updateComposer() {
+    if (!currentAccount()) return;
+    acc.draft = input.value.slice(0, 10000);
+    Platform.write('draft', acc.draft, acc.id);
     const n = input.value.length;
     count.textContent = '已输入 ' + n + ' 字符';
     send.disabled = n === 0;
   }
 
   function pushOutgoing() {
+    if (!currentAccount()) return;
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || text.length > 10000) return;
     const now = new Date();
     const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const row = document.createElement('div');
@@ -727,6 +803,7 @@ function buildEmbed(acc) {
     showGlobalToast('已加入演示会话（不发送到真实渠道）');
   }
 
+  updateComposer();
   input.addEventListener('input', updateComposer);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -764,73 +841,13 @@ function buildEmptyWorkspace() {
   wrap.innerHTML = `<div class="em-state">
     <span class="em-state-icon">${ICONS.plus}</span>
     <h2>还没有渠道账号</h2>
-    <p>从 20+ 渠道目录中添加账号，每个账号拥有独立的内嵌 WebView 会话分区。</p>
-    <button class="hp-primary em-state-btn" type="button" data-add-channel>+ 添加渠道账号</button>
+    <p>37 个渠道和自定义 URL 当前仅保存配置草稿，真实渠道尚未接入。</p>
+    ${Access.can('catalog') ? '<button class="hp-primary em-state-btn" type="button" data-add-channel>查看渠道目录</button>' : '<p>请联系商户分配账号。</p>'}
   </div>`;
   return wrap;
 }
 
 /* ---------- 页签内容 ---------- */
-
-const RECHARGE_PACKAGES = [
-  { id: 'starter', name: '体验包', price: '9.9', chars: '50 万', unit: '0.0198 元 / 千字符', desc: '适合个人试用与小批量沟通' },
-  { id: 'standard', name: '标准包', price: '49', chars: '300 万', unit: '0.0163 元 / 千字符', desc: '适合小团队日常跨境沟通', badge: '热门' },
-  { id: 'pro', name: '专业包', price: '199', chars: '1500 万', unit: '0.0133 元 / 千字符', desc: '适合高频业务与多账号运营', badge: '最划算' }
-];
-
-function buildRechargePage() {
-  const wrap = document.createElement('div');
-  wrap.className = 'rc';
-  const packages = RECHARGE_PACKAGES.map((p) =>
-    `<article class="rc-package${p.badge === '热门' ? ' is-featured' : ''}">
-      ${p.badge ? `<span class="rc-badge">${p.badge}</span>` : ''}
-      <h3>${p.name}</h3>
-      <div class="rc-price"><span>¥</span>${p.price}</div>
-      <div class="rc-chars">${p.chars} 字符</div>
-      <div class="rc-unit">${p.unit}</div>
-      <p>${p.desc}</p>
-      <button type="button" class="rc-buy" data-toast="支付通道接入中：${p.name} · ${p.chars} 字符">立即充值</button>
-    </article>`
-  ).join('');
-
-  wrap.innerHTML = `<div class="rc-head">
-      <div><h1>充值中心</h1><p>按字符计费 · 额度可分配给子账号 · 代理分成自动计入</p></div>
-      <span class="demo-badge">演示数据</span>
-    </div>
-    <section class="rc-wallet">
-      <div class="rc-wallet-main">
-        <div class="rc-label">字符余额</div>
-        <div class="rc-balance">1,284,600 <span>字符</span></div>
-        <div class="rc-sub">免费额度 100,000 字符 · 本月已用 32,400 字符</div>
-        <div class="rc-progress"><span></span></div>
-      </div>
-      <div class="rc-wallet-side">
-        <div><span>渠道账号</span><strong>${state.accounts.length} 个</strong></div>
-        <div><span>翻译池</span><strong>2 个</strong></div>
-        <div><span>额度有效期</span><strong>2026-12-31</strong></div>
-      </div>
-    </section>
-    <div class="rc-section-head"><h2>充值套餐</h2><span>低至 0.0133 元 / 千字符</span></div>
-    <div class="rc-packages">${packages}</div>
-    <div class="rc-grid">
-      <section class="rc-card">
-        <h3>额度规则</h3>
-        <ul class="rc-list">
-          <li>仅翻译成功时按原文字符数扣费</li>
-          <li>免费额度用完后自动使用付费余额</li>
-          <li>额度可分配给子账号，0 表示不限量</li>
-          <li>额度支持起止有效期，到期自动停用</li>
-        </ul>
-      </section>
-      <section class="rc-card">
-        <h3>代理分销</h3>
-        <p>直客与间客佣金按代理比例自动计入分成，提现入口在代理中心。</p>
-        <button type="button" class="rc-ghost" data-toast="代理分成规则待接入（直客 / 间客 / 提现）">查看分成规则</button>
-      </section>
-    </div>
-    <p class="rc-footnote">支付通道尚未接入，本页金额与余额为界面演示数据；计费表结构已准备（M4）。</p>`;
-  return wrap;
-}
 
 const TG_POSTS = [
   { time: '12 分钟前', text: '法国批发渠道本周上新：X200 现货 320 件，里昂仓 48 小时送达。需要报价单的客户可直接回复本频道。', views: '1.8k', likes: 46 },
@@ -839,6 +856,7 @@ const TG_POSTS = [
 ];
 
 function buildTgPage() {
+  if (!Access.can('tg')) return Platform.denied();
   const wrap = document.createElement('div');
   wrap.className = 'tg-page';
   wrap.innerHTML = `<div class="wp-head">
@@ -849,7 +867,7 @@ function buildTgPage() {
       </div>
     </div>
     <section class="tg-hero">
-      <span class="ch-tile tg-hero-icon" data-channel="telegram-k">TK</span>
+      <span class="ch-tile tg-hero-icon" data-channel="telegram-k">${window.HaituoChannelIcons.html('telegram-k')}</span>
       <div class="tg-hero-copy">
         <strong>海拓 · 法国批发频道</strong>
         <span>@haituo_france · 私有频道 · 2 位管理员</span>
@@ -863,7 +881,7 @@ function buildTgPage() {
     <div class="wp-section-head"><h2>最近发布</h2><span class="wp-muted">自动同步 · 每 5 分钟</span></div>
     <div class="tg-posts">
       ${TG_POSTS.map((p) => `<article class="tg-post">
-        <header><span class="ch-tile tg-post-avatar" data-channel="telegram-k">TK</span>
+        <header><span class="ch-tile tg-post-avatar" data-channel="telegram-k">${window.HaituoChannelIcons.html('telegram-k')}</span>
           <div><strong>海拓 · 法国批发频道</strong><span>${p.time}</span></div>
           <button class="bar-icon" type="button" data-toast="帖子操作（演示）">${ICONS.more}</button>
         </header>
@@ -876,13 +894,13 @@ function buildTgPage() {
 }
 
 const SYSTEM_MESSAGES = [
-  { tag: '充值', title: '充值到账提醒', text: '标准包 ¥49 · 300 万字符已到账，当前余额 1,284,600 字符。', time: '今天 09:12' },
-  { tag: '分销', title: '新用户分配', text: '代理 anan@haituo.app 名下新增 1 位用户，分成比例 30%。', time: '今天 08:36' },
-  { tag: '系统', title: '版本更新', text: '工作台布局升级：账号 chips 顶排 + 功能右栏 + 内嵌全宽。', time: '昨天 22:04' },
-  { tag: '安全', title: '异地登录提醒', text: '账号 owner@haituo.app 在 Windows 设备登录，如非本人请立即修改密码。', time: '昨天 19:41' }
+  { tag: '支付', title: '支付尚未开通', text: '套餐价格与币种待确认；没有真实订单或到账记录。', time: '功能说明' },
+  { tag: '配置', title: '本地预览不等于发布', text: '模型和公告保存为当前身份的本地草稿，不会同步给商户。', time: '功能说明' },
+  { tag: '系统', title: '独立平台首页', text: '回首页不清空当前账号草稿；聊天仍是海拓自制演示，非官方页面。', time: '功能说明' }
 ];
 
 function buildSystemPage() {
+  if (!Access.can('system')) return Platform.denied();
   const wrap = document.createElement('div');
   wrap.className = 'sys-page';
   wrap.innerHTML = `<div class="wp-head">
@@ -912,17 +930,20 @@ function buildSystemPage() {
 }
 
 function quotaFor(acc) {
+  if (!Access.can('usage') || !Access.account(acc.id) || !Access.get()?.demo) return { total: 0, free: 0, used: 0 };
+  if (Access.get().role === 'staff') return { total: 50000, free: 0, used: 3200 };
   const used = 18000 + (acc.name.length * 1300) + (acc.unread || 0) * 900;
   return { total: 1284600, free: 100000, used };
 }
 
 function buildAccountsPage() {
+  if (!Access.can('accounts')) return Platform.denied();
   const page = document.createElement('div');
   page.className = 'acc-page';
   page.innerHTML = `<div class="wp-head">
-      <div><h1>账号管理</h1><p>渠道账号状态、会话分区与额度；休眠可释放内存</p></div>
+      <div><h1>${Access.get().role === 'staff' ? '分配的账号' : '我的账号'}</h1><p>演示状态与示例额度 · 非真实渠道连接</p></div>
       <div class="wp-actions">
-        <button class="hp-primary" type="button" data-add-channel>+ 添加渠道</button>
+        ${Access.can('catalog') ? '<button class="hp-primary" type="button" data-add-channel>+ 配置渠道草稿</button>' : ''}
       </div>
     </div>
     <section class="acc-card">
@@ -943,8 +964,7 @@ function buildAccountsPage() {
         </div>
         <div id="acc-rows"></div>
       </div>
-    </section>
-    <div id="team-section"></div>`;
+    </section>`;
 
   const rows = page.querySelector('#acc-rows');
   const search = page.querySelector('#acc-search');
@@ -969,7 +989,7 @@ function buildAccountsPage() {
       const quota = quotaFor(acc);
       return `<div class="acc-row" data-row="${escapeHtml(acc.id)}">
         <span class="acc-name-cell">
-          <span class="ch-tile acc-tile" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}</span>
+          <span class="ch-tile acc-tile" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}</span>
           <span><strong>${escapeHtml(acc.name)}</strong><small>${escapeHtml(acc.account)}</small></span>
         </span>
         <span class="acc-channel">${escapeHtml(meta.name)}</span>
@@ -980,7 +1000,7 @@ function buildAccountsPage() {
         <span class="acc-actions">
           <button type="button" data-acc-action="${acc.status === 'sleep' ? 'wake' : 'sleep'}" data-id="${escapeHtml(acc.id)}">${acc.status === 'sleep' ? '唤醒' : '休眠'}</button>
           <button type="button" data-acc-action="quota" data-id="${escapeHtml(acc.id)}">配额</button>
-          <button type="button" class="is-danger" data-acc-action="delete" data-id="${escapeHtml(acc.id)}">删除</button>
+          ${Access.can('account-delete') ? `<button type="button" class="is-danger" data-acc-action="delete" data-id="${escapeHtml(acc.id)}">删除</button>` : ''}
         </span>
       </div>`;
     }).join('');
@@ -999,13 +1019,13 @@ function buildAccountsPage() {
     const btn = e.target.closest('[data-acc-action]');
     if (!btn) return;
     const acc = state.accounts.find((a) => a.id === btn.dataset.id);
-    if (!acc) return;
+    if (!acc || !requirePermission('account') || !Access.account(acc.id)) return;
     const action = btn.dataset.accAction;
     if (action === 'sleep' || action === 'wake') {
       acc.status = action === 'sleep' ? 'sleep' : 'online';
       renderAccounts();
       renderContent();
-      showGlobalToast(action === 'sleep' ? '服务已休眠，内存已释放（演示）' : '服务已唤醒（演示）');
+      showGlobalToast(action === 'sleep' ? '休眠样例已切换，未操作真实渠道进程' : '服务已唤醒（演示）');
     } else if (action === 'quota') {
       openQuota(acc);
     } else if (action === 'delete') {
@@ -1015,17 +1035,6 @@ function buildAccountsPage() {
 
   drawRows();
 
-  const team = page.querySelector('#team-section');
-  if (state.role === 'owner' || state.role === 'agent') {
-    const block = document.createElement('section');
-    block.className = 'wp-section';
-    block.innerHTML = `<div class="wp-section-head">
-      <div><h2>${state.role === 'owner' ? '团队与分销' : '我的用户'}</h2>
-      <p>${state.role === 'owner' ? '管理代理、分配用户与查看分成' : '查看名下用户与分成情况'}</p></div>
-    </div>`;
-    block.appendChild(state.role === 'owner' ? buildAgentManagePanel() : buildMyUsersPanel());
-    team.appendChild(block);
-  }
   return page;
 }
 
@@ -1051,7 +1060,7 @@ function buildAboutPanel() {
         <h3>当前进度</h3>
         <ul>
           <li>工作台骨架：标题工具、账号 chips、功能右栏与内嵌区</li>
-          <li>Supabase 邮箱账号与 owner / agent / user 角色体系</li>
+          <li>Supabase 邮箱账号与 owner / admin / user / staff 角色体系</li>
           <li>渠道目录、端口配置与账号菜单为静态交互</li>
           <li>计费表结构已准备，运行时扣费待接入</li>
         </ul>
@@ -1069,135 +1078,10 @@ function buildAboutPanel() {
   return wrap;
 }
 
-function mgmtRow(email, roleLabel, role, extra, actionBtn) {
-  const row = document.createElement('div');
-  row.className = 'mgmt-row';
-  row.innerHTML = `<span class="mgmt-email">${escapeHtml(email)}</span>
-    <span class="mgmt-tag" data-role="${escapeHtml(role)}">${escapeHtml(roleLabel)}</span>
-    ${extra ? `<span class="mgmt-extra">${escapeHtml(extra)}</span>` : ''}`;
-  if (actionBtn) row.appendChild(actionBtn);
-  return row;
-}
-
-function buildAgentManagePanel() {
-  const wrap = document.createElement('div');
-  const msg = document.createElement('div');
-  msg.className = 'mgmt-msg';
-  const list = document.createElement('div');
-  list.className = 'mgmt-list';
-
-  async function load() {
-    list.innerHTML = '';
-    const res = await window.haituo.distribution.listProfiles();
-    if (!res.ok) { list.textContent = res.error || '加载失败'; return; }
-    const profiles = res.profiles || [];
-    if (profiles.length === 0) { list.textContent = '暂无账号'; return; }
-    for (const p of profiles) {
-      const roleLabel = ROLE_LABELS[p.role] || p.role;
-      const extra = p.commission_rate != null ? '分成 ' + p.commission_rate + '%' : '';
-      let btn = null;
-      if (p.role === 'agent') {
-        btn = document.createElement('button');
-        btn.className = 'btn-mini';
-        btn.textContent = '降级';
-        btn.addEventListener('click', async () => {
-          const r = await window.haituo.distribution.demoteAgent(p.id);
-          msg.textContent = r.ok ? '已降级' : (r.error || '失败');
-          msg.classList.toggle('is-ok', !!r.ok);
-          load();
-        });
-      }
-      list.appendChild(mgmtRow(p.email, roleLabel, p.role, extra, btn));
-    }
-  }
-
-  const promoteForm = document.createElement('form');
-  promoteForm.className = 'mgmt-form';
-  promoteForm.innerHTML = `<label>邮箱 <input name="email" type="email" placeholder="user@example.com" /></label>
-    <label>分成 % <input name="rate" type="number" min="0" max="100" step="0.1" placeholder="30" /></label>
-    <button type="submit">设为代理</button>`;
-  promoteForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    msg.textContent = '';
-    msg.classList.remove('is-ok');
-    const r = await window.haituo.distribution.promoteToAgent(promoteForm.email.value, promoteForm.rate.value);
-    msg.textContent = r.ok ? '已设为代理' : (r.error || '失败');
-    msg.classList.toggle('is-ok', !!r.ok);
-    load();
-  });
-
-  const assignForm = document.createElement('form');
-  assignForm.className = 'mgmt-form';
-  assignForm.innerHTML = `<label>用户邮箱 <input name="userEmail" type="email" placeholder="user@example.com" /></label>
-    <label>代理邮箱 <input name="agentEmail" type="email" placeholder="agent@example.com" /></label>
-    <button type="submit">分配到代理</button>`;
-  assignForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    msg.textContent = '';
-    msg.classList.remove('is-ok');
-    const r = await window.haituo.distribution.assignAgent(assignForm.userEmail.value, assignForm.agentEmail.value);
-    msg.textContent = r.ok ? '已分配' : (r.error || '失败');
-    msg.classList.toggle('is-ok', !!r.ok);
-    load();
-  });
-
-  const title = document.createElement('div');
-  title.className = 'mgmt-section-title';
-  title.textContent = '所有账号';
-
-  wrap.appendChild(promoteForm);
-  wrap.appendChild(assignForm);
-  wrap.appendChild(msg);
-  wrap.appendChild(title);
-  wrap.appendChild(list);
-  load();
-  return wrap;
-}
-
-function buildMyUsersPanel() {
-  const wrap = document.createElement('div');
-  const list = document.createElement('div');
-  list.className = 'mgmt-list';
-
-  async function load() {
-    list.innerHTML = '';
-    const res = await window.haituo.distribution.listMyUsers();
-    if (!res.ok) { list.textContent = res.error || '加载失败'; return; }
-    const users = res.users || [];
-    if (users.length === 0) { list.textContent = '名下暂无用户'; return; }
-    for (const u of users) list.appendChild(mgmtRow(u.email, '', '', '', null));
-  }
-
-  wrap.appendChild(list);
-  load();
-  return wrap;
-}
-
-/* ---------- 用户菜单 ---------- */
-
-function buildUserMenu() {
-  const roleItems = [];
-  if (state.role === 'owner') {
-    roleItems.push({ action: 'providers', label: '服务商运营' });
-    roleItems.push({ action: 'agent', label: '代理管理' });
-  }
-  if (state.role === 'agent') roleItems.push({ action: 'my-users', label: '我的用户' });
-  userMenu.innerHTML = `<div class="um-head">
-      <strong>${escapeHtml(state.user ? state.user.email : '')}</strong>
-      <small>${state.demo ? '离线演示 · 所有者权限' : (ROLE_LABELS[state.role] || state.role)} · ${escapeHtml(BRAND.name)}</small>
-    </div>
-    <button class="um-item" type="button" data-user-action="recharge">充值中心</button>
-    <button class="um-item" type="button" data-user-action="quota">查看当前账号配额</button>
-    ${roleItems.map((i) => `<button class="um-item" type="button" data-user-action="${i.action}">${i.label}</button>`).join('')}
-    <button class="um-item" type="button" data-user-action="about">关于海拓</button>
-    <div class="um-divider"></div>
-    <button class="um-item is-danger" type="button" data-user-action="logout">退出登录</button>`;
-}
-
 /* ---------- 功能栏 ---------- */
 
 function visibleFeatures() {
-  return FEATURES.filter((f) => !state.hiddenFx.includes(f.id));
+  return FEATURES.filter((f) => Access.can(f.id) && !state.hiddenFx.includes(f.id));
 }
 
 function featureButtonHtml(feature, compact) {
@@ -1224,6 +1108,7 @@ function syncRailActive() {
 const panelCache = new Map();
 
 function toggleFeature(id) {
+  if (!requirePermission(id)) return;
   if (state.hiddenFx.includes(id)) return;
   const feature = FEATURES.find((f) => f.id === id);
   if (!feature) return;
@@ -1276,7 +1161,7 @@ function renderFxManager() {
       <button type="button" data-fx-reset>恢复默认</button>
     </div>
     <div class="fx-manager-list">
-      ${FEATURES.map((f) => `<label>
+      ${FEATURES.filter((f) => Access.can(f.id)).map((f) => `<label>
         <input type="checkbox" value="${escapeHtml(f.id)}"${state.hiddenFx.includes(f.id) ? '' : ' checked'} />
         <span>${escapeHtml(f.name)}</span>${f.status === 'deferred' ? '<span class="fx-slot-tag">插件位</span>' : ''}
       </label>`).join('')}
@@ -1326,8 +1211,10 @@ function fxField(label, control, help) {
 }
 
 function buildFeaturePanel(id) {
+  if (!Access.can(id)) return Platform.denied();
   const wrap = document.createElement('div');
   wrap.className = 'fx-content';
+  wrap.dataset.featurePermission = id;
 
   if (id === 'quick-reply') {
     wrap.innerHTML = `<div class="fx-block">
@@ -1520,7 +1407,7 @@ function buildFeaturePanel(id) {
       <div class="fx-block">
         <div class="fx-block-title">译文</div>
         <div class="fx-tr-out" id="fx-tr-out">您好，我想订购 20 件。能否提供一份正式报价？</div>
-        <p class="fx-note" id="fx-tr-meta">演示译文，不调用真实 API；按翻译字符 × 服务商单价扣额度。</p>
+        <p class="fx-note" id="fx-tr-meta">演示译文，不调用真实 API；仅计算模拟用量和成本，不扣真实额度。</p>
       </div>`;
   } else if (id === 'writing') {
     wrap.innerHTML = `<div class="fx-block">
@@ -1646,6 +1533,7 @@ function buildFeaturePanel(id) {
 
 function bindPanelEvents(root) {
   root.addEventListener('click', (e) => {
+    if (!requirePermission(root.dataset.featurePermission)) return;
     const seg = e.target.closest('[data-seg]');
     if (seg) {
       e.preventDefault();
@@ -1719,7 +1607,7 @@ function accountMenuHtml(acc) {
   const font = acc.ui && acc.ui.font ? acc.ui.font : 'md';
   const density = acc.ui && acc.ui.density ? acc.ui.density : 3;
   return `<div class="cm-head">
-      <span class="ch-tile cm-avatar" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}</span>
+      <span class="ch-tile cm-avatar" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}</span>
       <div><strong>${escapeHtml(acc.name)}</strong><small>${escapeHtml(meta.name)} · ${escapeHtml(acc.partition)}</small></div>
     </div>
     <div class="cm-section">
@@ -1737,16 +1625,17 @@ function accountMenuHtml(acc) {
       </div>
     </div>
     <div class="cm-divider"></div>
-    <button class="cm-item" type="button" data-acc-act="edit">编辑备注 / 头像</button>
+    ${Access.can('account-edit') ? '<button class="cm-item" type="button" data-acc-act="edit">编辑备注 / 头像</button>' : ''}
     <button class="cm-item" type="button" data-acc-act="toggle-sleep">${acc.status === 'sleep' ? '唤醒服务' : '休眠服务'}</button>
     <button class="cm-item" type="button" data-acc-act="refresh">刷新服务</button>
     <button class="cm-item" type="button" data-acc-act="clear">清理缓存并刷新</button>
     <button class="cm-item" type="button" data-acc-act="quota">配额查看</button>
     <div class="cm-divider"></div>
-    <button class="cm-item is-danger" type="button" data-acc-act="delete">删除服务</button>`;
+    ${Access.can('account-delete') ? '<button class="cm-item is-danger" type="button" data-acc-act="delete">删除演示服务</button>' : ''}`;
 }
 
 function openAccountMenu(id, x, y) {
+  if (!requirePermission('account') || !Access.account(id)) return;
   const acc = state.accounts.find((a) => a.id === id);
   if (!acc) return;
   contextMenu.dataset.account = id;
@@ -1765,8 +1654,10 @@ function closeAccountMenu() {
 }
 
 function deleteAccount(acc) {
+  if (!requirePermission('account-delete') || !Access.account(acc.id)) return;
   const ok = window.confirm('确定删除服务「' + acc.name + '」？演示阶段仅从当前工作台移除。');
   if (!ok) return;
+  if (window.HaituoWebChannels) window.HaituoWebChannels.destroy(acc.id);
   state.accounts = state.accounts.filter((a) => a.id !== acc.id);
   if (state.activeId === acc.id) state.activeId = state.accounts[0] ? state.accounts[0].id : null;
   closeAccountMenu();
@@ -1778,17 +1669,21 @@ function deleteAccount(acc) {
 
 contextMenu.addEventListener('click', (e) => {
   const acc = state.accounts.find((a) => a.id === contextMenu.dataset.account);
-  if (!acc) return;
+  if (!acc || !requirePermission('account') || !Access.account(acc.id)) return;
   const fontBtn = e.target.closest('[data-font]');
   if (fontBtn) {
+    if (!requirePermission('appearance') || !['sm', 'md', 'lg'].includes(fontBtn.dataset.font)) return;
     acc.ui.font = fontBtn.dataset.font;
+    Platform.write('account', { name: acc.name, avatar: acc.avatar, ...acc.ui }, acc.id);
     renderAccounts();
     closeAccountMenu();
     return;
   }
   const densityBtn = e.target.closest('[data-density]');
   if (densityBtn) {
+    if (!requirePermission('appearance') || ![1, 2, 3, 4, 5].includes(Number(densityBtn.dataset.density))) return;
     acc.ui.density = Number(densityBtn.dataset.density);
+    Platform.write('account', { name: acc.name, avatar: acc.avatar, ...acc.ui }, acc.id);
     renderAccounts();
     closeAccountMenu();
     return;
@@ -1805,7 +1700,7 @@ contextMenu.addEventListener('click', (e) => {
     if (state.view === 'account' && state.activeId === acc.id) renderContent();
     if (state.view === 'accounts') renderContent();
     closeAccountMenu();
-    showGlobalToast(acc.status === 'sleep' ? '服务已休眠，内存已释放（演示）' : '服务已唤醒（演示）');
+    showGlobalToast(acc.status === 'sleep' ? '休眠样例已切换，未操作真实渠道进程' : '服务已唤醒（演示）');
   } else if (act === 'refresh') {
     closeAccountMenu();
     showGlobalToast('正在刷新 ' + acc.name + '（演示）');
@@ -1826,11 +1721,13 @@ contextMenu.addEventListener('click', (e) => {
 
 function catalogCardHtml(channel) {
   const custom = Boolean(channel.custom);
-  return `<button class="cat-card${custom ? ' is-custom' : ''}" type="button" data-channel-id="${escapeHtml(channel.id)}">
-    <span class="ch-tile cat-icon" data-channel="${escapeHtml(channel.id)}">${escapeHtml(channel.icon)}</span>
+  const status = window.HaituoChannelIcons.status(channel.id);
+  const label = { verified: '待接入 · 官方来源素材', pending: '待接入 · 图标待核验', retired: '消费者版已停运', custom: '自定义 URL 草稿' }[status];
+  return `<button class="cat-card${custom ? ' is-custom' : ''}" type="button" data-channel-id="${escapeHtml(channel.id)}"${status === 'retired' ? ' disabled' : ''} title="来源核验不代表商标授权或官方合作；尚未接入真实渠道">
+    <span class="ch-tile cat-icon" data-channel="${escapeHtml(channel.id)}">${window.HaituoChannelIcons.html(channel.id)}</span>
     <span class="cat-name">${escapeHtml(channel.name)}</span>
     <span class="cat-tag">${escapeHtml(channel.tag)}</span>
-    <span class="cat-coming">${custom ? 'URL 预留' : '即将上线'}</span>
+    <span class="cat-coming">${escapeHtml(label)}</span>
   </button>`;
 }
 
@@ -1842,6 +1739,7 @@ function renderCatalog(keyword) {
 }
 
 function openCatalog() {
+  if (!requirePermission('catalog')) return;
   catalogSearch.value = '';
   renderCatalog('');
   closeModal('channel-config');
@@ -1850,10 +1748,13 @@ function openCatalog() {
 }
 
 function openConfig(channel) {
+  if (!requirePermission('catalog') || !CATALOG.some((c) => c.id === channel.id)) return;
+  channel = CATALOG.find((c) => c.id === channel.id);
+  if (channel.id === 'skype') { showGlobalToast('消费者版 Skype 已停运，不创建渠道草稿'); return; }
   state.pendingChannel = channel;
   const custom = Boolean(channel.custom || channel.url);
   cfgChannelIcon.dataset.channel = channel.id;
-  cfgChannelIcon.textContent = channel.icon;
+  cfgChannelIcon.innerHTML = window.HaituoChannelIcons.html(channel.id);
   cfgTitle.textContent = custom ? '配置自定义服务' : '配置 ' + channel.name + ' 端口';
   cfgName.value = channel.name + ' 01';
   cfgName.placeholder = custom ? '例如：我的独立站客服' : '例如：法国批发 01';
@@ -1885,6 +1786,10 @@ function shortId() {
 /* ---------- 弹层辅助 ---------- */
 
 function openModal(id) {
+  const permission = { 'provider-modal': 'providers', 'channel-catalog': 'catalog', 'channel-config': 'catalog', 'account-edit': 'account-edit', 'quota-modal': 'usage', 'sheet-modal': 'home' }[id];
+  if (!permission || !requirePermission(permission)) return;
+  // 账号编辑弹层必须绑定当前身份的有效账号，直接 openModal 不能暴露上一身份的预览。
+  if (id === 'account-edit' && (!state.editingId || !state.accounts.some((a) => a.id === state.editingId) || !Access.account(state.editingId))) return;
   const el = document.getElementById(id);
   if (el) el.hidden = false;
 }
@@ -1916,11 +1821,13 @@ document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
 });
 
 function openQuota(acc) {
+  if (!requirePermission('usage') || (acc && !Access.account(acc.id))) return;
+  if (Access.get().role === 'staff') return selectPage('usage');
   if (!acc) { showGlobalToast('请先选择一个账号'); return; }
   const meta = channelMeta(acc.channel);
   const quota = quotaFor(acc);
   quotaBody.innerHTML = `<div class="quota-account">
-      <span class="ch-tile quota-tile" data-channel="${escapeHtml(acc.channel)}">${escapeHtml(acc.avatar || meta.icon)}</span>
+      <span class="ch-tile quota-tile" data-channel="${escapeHtml(acc.channel)}">${window.HaituoChannelIcons.html(acc.channel, acc.avatar)}</span>
       <div><strong>${escapeHtml(acc.name)}</strong><small>${escapeHtml(meta.name)} · ${escapeHtml(acc.partition)}</small></div>
       <span class="quota-status${acc.status === 'sleep' ? ' is-sleep' : ''}">${escapeHtml(accountStatusLabel(acc))}</span>
     </div>
@@ -1936,17 +1843,18 @@ function openQuota(acc) {
       <div><span>翻译池</span><strong>默认池</strong></div>
       <div><span>计费方式</span><strong>按原文字符</strong></div>
     </div>
-    <p class="quota-note">休眠账号不消耗配额；唤醒后按实际翻译字符扣减。数据来自 M4 计费表（演示）。</p>`;
+    <p class="quota-note">这里只显示本地样例额度，未查询钱包、未执行扣费。真实配额、有效期与明细须由服务端核验。</p>`;
   openModal('quota-modal');
 }
 
 function openEditAccount(acc) {
+  if (!requirePermission('account-edit') || !Access.account(acc.id)) return;
   state.editingId = acc.id;
   const meta = channelMeta(acc.channel);
   editName.value = acc.name;
-  editAvatar.value = acc.avatar || meta.icon;
+  editAvatar.value = acc.avatar || '';
   editAvatarPreview.dataset.channel = acc.channel;
-  editAvatarPreview.textContent = acc.avatar || meta.icon;
+  editAvatarPreview.innerHTML = window.HaituoChannelIcons.html(acc.channel, acc.avatar);
   editNamePreview.textContent = acc.name;
   editSubPreview.textContent = meta.name + ' · ' + acc.partition;
   openModal('account-edit');
@@ -1954,14 +1862,16 @@ function openEditAccount(acc) {
 }
 
 editName.addEventListener('input', () => { editNamePreview.textContent = editName.value || '账号名称'; });
-editAvatar.addEventListener('input', () => { editAvatarPreview.textContent = editAvatar.value || '?'; });
+editAvatar.addEventListener('input', () => { editAvatarPreview.innerHTML = window.HaituoChannelIcons.html(editAvatarPreview.dataset.channel, editAvatar.value.slice(0, 4)); });
 
 editForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  if (!requirePermission('account-edit') || !Access.account(state.editingId)) return;
   const acc = state.accounts.find((a) => a.id === state.editingId);
   if (!acc) return;
-  acc.name = editName.value.trim() || acc.name;
-  acc.avatar = editAvatar.value.trim() || acc.avatar;
+  acc.name = editName.value.trim().slice(0, 24) || acc.name;
+  acc.avatar = editAvatar.value.trim().slice(0, 4);
+  Platform.write('account', { name: acc.name, avatar: acc.avatar, ...acc.ui }, acc.id);
   closeModal('account-edit');
   renderAccounts();
   renderContent();
@@ -1995,16 +1905,17 @@ function openLockScreen() {
   overlay.hidden = false;
 }
 
+function titlePermission(tool) {
+  return ({ add: 'catalog', edit: 'writing', home: 'home', settings: 'other', tasks: 'reminder', stats: 'fans', bell: 'system', search: 'accounts', moon: 'appearance', language: 'other', support: 'home', lock: 'home' })[tool];
+}
+
 function handleTitleTool(tool) {
+  if (!requirePermission(titlePermission(tool))) return;
   if (tool === 'add') return openCatalog();
   if (tool === 'edit') return toggleFeature('writing');
   if (tool === 'search') return showGlobalToast('全局搜索待接入：账号 / 客户 / 消息');
-  if (tool === 'home') {
-    if (state.accounts.length) selectAccount(state.activeId || state.accounts[0].id);
-    else renderContent();
-    return;
-  }
-  if (tool === 'settings') return toggleFeature('other');
+  if (tool === 'home') return selectPage('home');
+  if (tool === 'settings') return selectPage('appsettings');
   if (tool === 'tasks') return toggleFeature('reminder');
   if (tool === 'stats') return showGlobalToast('粉丝统计为插件位预留（slot: analytics），后续版本接入');
   if (tool === 'bell') {
@@ -2020,7 +1931,7 @@ function handleTitleTool(tool) {
     showGlobalToast('客服会话接入中，可点击右下角悬浮球');
     return;
   }
-  if (tool === 'moon') return showGlobalToast('当前已是深色主题');
+  if (tool === 'moon') return selectPage('appearance');
   if (tool === 'language') return showGlobalToast('界面语言：简体中文（多语言切换待接入）');
   if (tool === 'lock') return openLockScreen();
 }
@@ -2032,34 +1943,16 @@ titleTools.addEventListener('click', (e) => {
 
 userTrigger.addEventListener('click', (e) => {
   e.stopPropagation();
-  userMenu.hidden = !userMenu.hidden;
+  selectPage('me');
 });
 
-userMenu.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-user-action]');
-  if (!btn) return;
-  userMenu.hidden = true;
-  const action = btn.dataset.userAction;
-  if (action === 'recharge') {
-    selectPage('recharge');
-  } else if (action === 'quota') {
-    openQuota(activeAccount());
-  } else if (action === 'agent') {
-    openSheet('代理管理', buildAgentManagePanel());
-  } else if (action === 'providers') {
-    if (window.HaituoStudio) window.HaituoStudio.openProviderPanel();
-  } else if (action === 'my-users') {
-    openSheet('我的用户', buildMyUsersPanel());
-  } else if (action === 'about') {
-    openSheet('关于海拓', buildAboutPanel());
-  } else if (action === 'logout') {
-    closeAllOverlays();
-    if (!state.demo) await window.haituo.auth.signOut();
-    passwordInput.value = '';
-    setMode('login');
-    showAuth();
-  }
-});
+async function doLogout() {
+  closeAllOverlays();
+  const result = await Access.signOut();
+  passwordInput.value = '';
+  setMode('login');
+  showAuth(result.ok ? '' : result.error || '退出未获确认，请重试');
+}
 
 function applyMode(mode, notify) {
   state.mode = mode;
@@ -2120,13 +2013,18 @@ catalogGrid.addEventListener('click', (e) => {
 
 channelForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  if (!requirePermission('catalog')) return;
   const channel = state.pendingChannel;
   if (!channel) return;
   const custom = Boolean(channel.custom || channel.url);
-  const baseName = cfgName.value.trim() || channel.name + ' 01';
+  const baseName = cfgName.value.trim().slice(0, 80) || channel.name + ' 01';
   const count = Math.max(1, Math.min(20, Number.parseInt(cfgCount.value, 10) || 1));
   const url = cfgUrl ? cfgUrl.value.trim() : '';
-  if (custom && !/^https?:\/\/[^\s]+$/i.test(url)) {
+  let validUrl = !custom;
+  if (custom) {
+    try { const parsed = new URL(url); validUrl = ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password && !/[\s<>"']/.test(url) && url.length <= 2048; } catch {}
+  }
+  if (!validUrl) {
     showGlobalToast('请填写以 http:// 或 https:// 开头的服务地址');
     cfgUrl.focus();
     return;
@@ -2154,11 +2052,11 @@ channelForm.addEventListener('submit', (e) => {
     lang: cfgLang.value,
     browser: cfgBrowser.value,
     proxyMode: cfgProxyMode.value,
-    proxy: cfgProxy ? cfgProxy.value.trim() : '',
+    proxy: cfgProxy ? cfgProxy.value.trim().slice(0, 2048) : '',
     cookieLogin: cfgCookie.checked,
     savedAt: new Date().toISOString()
   });
-  writeStorage(STORAGE.drafts, JSON.stringify(drafts));
+  if (!writeStorage(STORAGE.drafts, JSON.stringify(drafts))) { showGlobalToast('本地保存失败，配置未保存'); return; }
   closeModal('channel-config');
   showGlobalToast('已保存配置草稿（共 ' + drafts.length + ' 条），首期不创建账号');
 });
@@ -2169,6 +2067,16 @@ quotaRecharge.addEventListener('click', () => {
 });
 
 document.addEventListener('click', (e) => {
+  const userAction = e.target.closest('[data-user-action]');
+  if (userAction) {
+    const action = userAction.dataset.userAction;
+    if (action === 'logout') { doLogout(); return; }
+    if (action === 'about') { openSheet('关于海拓', buildAboutPanel()); return; }
+  }
+  const route = e.target.closest('[data-platform-page]');
+  if (route) selectPage(route.dataset.platformPage);
+  const account = e.target.closest('[data-platform-account]');
+  if (account) selectAccount(account.dataset.platformAccount);
   const add = e.target.closest('[data-add-channel]');
   if (add) openCatalog();
   const toast = e.target.closest('[data-toast]');
@@ -2209,11 +2117,16 @@ googleLogin.addEventListener('click', () => {
   setAuthMessage('Google 登录待接入（需在 Supabase 配置 OAuth Provider）');
 });
 
-demoLogin.addEventListener('click', () => {
+demoLogin.addEventListener('click', async () => {
+  if (demoLogin.disabled) return;
+  demoLogin.disabled = true;
   passwordInput.value = '';
   setMode('login');
-  setAuthMessage('');
-  showApp({ email: 'demo@haituo.local', role: 'owner', demo: true });
+  try {
+    const result = await Access.enterDemo(document.getElementById('demo-role').value);
+    if (result.ok) showApp();
+    else setAuthMessage(result.error);
+  } finally { demoLogin.disabled = false; }
 });
 
 document.querySelectorAll('.auth-terms a').forEach((a) => {
@@ -2235,12 +2148,19 @@ authForm.addEventListener('submit', async (e) => {
     return;
   }
 
-  const res = authMode === 'login'
-    ? await window.haituo.auth.signIn(email, p)
-    : await window.haituo.auth.signUp(email, p);
+  if (authenticating) return;
+  authenticating = true;
+  authSubmit.disabled = true;
+  demoLogin.disabled = true;
+  const mode = authMode;
+  let res;
+  try {
+    res = mode === 'login' ? await Access.signIn(email, p) : await window.haituo.auth.signUp(email, p);
+  } catch { res = { ok: false, error: '身份服务暂不可用，请重试' }; }
+  finally { authenticating = false; authSubmit.disabled = false; demoLogin.disabled = false; }
 
   if (res.ok) {
-    if (authMode === 'register') {
+    if (mode === 'register') {
       emailInput.value = '';
       passwordInput.value = '';
       setMode('login');
@@ -2256,29 +2176,26 @@ authForm.addEventListener('submit', async (e) => {
   }
 });
 
-window.haituo.auth.onAuthStateChange(async (payload) => {
-  if (state.demo) return;
+window.haituo.auth.onAuthStateChange((payload) => {
+  if (Access.get()?.demo || authenticating) return;
   if (payload.event === 'SIGNED_OUT') {
+    Access.clear();
     showAuth('登录已失效，请重新登录');
-  } else if (payload.event === 'SIGNED_IN') {
-    const res = await window.haituo.auth.getSession();
-    if (res && res.ok && res.user) showApp(res.user);
   }
 });
 
 async function boot() {
   paintWindowButtons();
   bindWindowControls();
-  const status = await window.haituo.auth.status();
-  configNotice.hidden = status.configured;
-  demoHint.hidden = status.configured;
-
-  const res = await window.haituo.auth.getSession();
-  if (res && res.ok && res.user) {
-    showApp(res.user);
-  } else {
-    showAuth();
-  }
+  demoLogin.disabled = true;
+  authSubmit.disabled = true;
+  try {
+    // 预览版：打开直接进入平台（默认 owner 演示身份），无登录门禁；账号系统后续接入后加回登录页。
+    const result = await Access.enterDemo('owner');
+    if (result.ok) showApp();
+    else showAuth(result.error);
+  } catch { showAuth('身份服务暂不可用，可稍后重试'); }
+  finally { demoLogin.disabled = false; authSubmit.disabled = false; }
 }
 
 boot();

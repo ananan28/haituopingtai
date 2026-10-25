@@ -3,10 +3,10 @@
 
 window.HAITUO_ACCOUNTS = [
   {
-    id: 'wa-lea',
+    id: 'demo:wa-lea',
     name: 'Léa · 法国批发',
     channel: 'whatsapp',
-    avatar: 'W',
+    avatar: '',
     account: '+33 6 12 34 56 78',
     status: 'online',
     unread: 2,
@@ -16,10 +16,10 @@ window.HAITUO_ACCOUNTS = [
     ui: { font: 'md', density: 3 }
   },
   {
-    id: 'tg-chen',
+    id: 'demo:tg-chen',
     name: '陈伟 · 样品单',
     channel: 'telegram',
-    avatar: 'T',
+    avatar: '',
     account: '@chen_wei_b2b',
     status: 'online',
     unread: 0,
@@ -29,10 +29,10 @@ window.HAITUO_ACCOUNTS = [
     ui: { font: 'md', density: 3 }
   },
   {
-    id: 'wa-group',
+    id: 'demo:wa-group',
     name: '法国批发群',
     channel: 'whatsapp',
-    avatar: 'W',
+    avatar: '',
     account: '群组 · 36 人',
     status: 'online',
     unread: 5,
@@ -42,10 +42,10 @@ window.HAITUO_ACCOUNTS = [
     ui: { font: 'md', density: 3 }
   },
   {
-    id: 'sg-sophie',
+    id: 'demo:sg-sophie',
     name: 'Sophie Bernard',
     channel: 'signal',
-    avatar: 'S',
+    avatar: '',
     account: '+33 7 88 20 14 09',
     status: 'sleep',
     unread: 0,
@@ -57,10 +57,11 @@ window.HAITUO_ACCOUNTS = [
 ];
 
 window.HAITUO_PAGE_TABS = [
-  { id: 'recharge', name: '充值中心' },
-  { id: 'tg', name: 'TG频道', badge: 2 },
-  { id: 'system', name: '系统消息' },
-  { id: 'accounts', name: '账号管理' }
+  { id: 'home', name: '首页' },
+  { id: 'accounts', name: '账号' },
+  { id: 'recharge', name: '充值' },
+  { id: 'usage', name: '用量' },
+  { id: 'appearance', name: '外观' }
 ];
 
 // 右侧功能栏：顺序即展示顺序，hidden 只控制默认显隐。

@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-and-package:
+    name: Test & package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # database-security.tmp.js hardcodes this absolute path as its PGlite require target
+      - name: Install PGlite (DB test runtime)
+        shell: pwsh
+        run: |
+          $pgDir = "C:\Users\AQ28n\AppData\Local\Temp\haituo-window2-checks"
+          New-Item -ItemType Directory -Force -Path $pgDir | Out-Null
+          npm install --prefix $pgDir --no-save @electric-sql/pglite@0.2.16
+
+      - name: Test VM security (runtime-security)
+        run: npm run test:vm
+
+      - name: Test database security (PGlite)
+        run: npm run test:db
+
+      - name: Test hidden Electron UI (platform-preview)
+        run: npm run test:ui
+
+      - name: Test OCR security
+        run: npm run test:ocr
+
+      - name: Package (electron-builder NSIS)
+        run: npm run dist
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: haituo-setup
+          path: dist/*.exe
+          if-no-files-found: error

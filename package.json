@@ -1,21 +1,27 @@
 {
   "name": "haituo-platform",
   "productName": "海拓商业版",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "海拓商业版 - 多语言翻译与多渠道消息聚合平台",
   "author": "海拓",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis --x64"
+    "dist": "electron-builder --win nsis --x64",
+    "test:vm": "node runtime-security.tmp.js",
+    "test:db": "node database-security.tmp.js",
+    "test:ui": "electron platform-preview.tmp.js",
+    "test:ocr": "node ocr-security.tmp.js",
+    "ci": "npm run test:vm && npm run test:db && npm run test:ui && npm run test:ocr"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
+    "electron": "44.1.0",
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
     "dotenv": "^18.0.9",
+    "electron-updater": "^6.8.11",
     "ws": "^8.22.0"
   },
   "build": {
@@ -25,13 +31,23 @@
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!dist/**",
-      "!.env",
-      "!.env.local",
-      "!.env.*.local",
-      "!*.tmp.js",
-      "!*.log"
+      "main.js",
+      "preload.js",
+      "auth.js",
+      "runtime-access.js",
+      "ipc.js",
+      "distribution.js",
+      "realtime-config.js",
+      "ocr.js",
+      "screenshot.js",
+      "app-settings.js",
+      "signal-host.js",
+      "package.json",
+      "src/**",
+      "assets/**",
+      "!**/.env*",
+      "!**/*.tmp.js",
+      "!**/*.log"
     ],
     "asar": true,
     "win": {

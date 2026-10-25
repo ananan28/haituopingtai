@@ -1,7 +1,7 @@
 /* =========================================================
    翻译服务商三级裁决 + 截屏翻译工作台（v1）
-   - 服务商：客户单次手动 > 客户默认偏好 > 后台顺序逐级降级
-   - 计费：翻译字符 × 服务商千字符单价（演示额度）
+   - 服务商：客户单次手动 > 客户默认偏好 > 本地预览顺序逐级降级
+   - 计费：翻译字符 × 服务商千字符单价（演示模拟额度）
    - 截屏：主窗内结果页，OCR 永远读取未标注原图
    ========================================================= */
 
@@ -54,9 +54,20 @@
     ));
   }
 
+  const access = window.HaituoAccess;
+  let sessionRevision = 0;
+  let operationRevision = 0;
+
+  function permitted(permission) {
+    if (access.can(permission)) return true;
+    toast('当前身份没有此操作权限');
+    return false;
+  }
+
   function readStorage(key, fallback) {
     try {
-      const raw = localStorage.getItem(key);
+      const scoped = access.key(key);
+      const raw = scoped ? localStorage.getItem(scoped) : null;
       return raw == null ? fallback : raw;
     } catch {
       return fallback;
@@ -64,20 +75,21 @@
   }
 
   function writeStorage(key, value) {
-    try { localStorage.setItem(key, value); } catch { /* 本地存储不可用时仅当前会话生效 */ }
+    try {
+      const scoped = access.key(key);
+      if (!scoped) return false;
+      localStorage.setItem(scoped, value);
+      return true;
+    } catch { return false; }
   }
 
   function readJson(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw == null ? fallback : JSON.parse(raw);
-    } catch {
-      return fallback;
-    }
+    try { return JSON.parse(readStorage(key, 'null')) ?? fallback; }
+    catch { return fallback; }
   }
 
   function writeJson(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+    return writeStorage(key, JSON.stringify(value));
   }
 
   function deepCopy(value) {
@@ -107,7 +119,7 @@
 
   function loadAdmin() {
     const base = defaultAdmin();
-    const saved = readJson(STORAGE.admin, null);
+    const saved = access.can('providers') ? readJson(STORAGE.admin, null) : null;
     if (!saved || typeof saved !== 'object') return base;
     const order = Array.isArray(saved.order)
       ? saved.order.filter((id) => Object.prototype.hasOwnProperty.call(base.enabled, id))
@@ -117,7 +129,7 @@
     base.order.forEach((id) => {
       if (saved.enabled && typeof saved.enabled[id] === 'boolean') base.enabled[id] = saved.enabled[id];
       const price = Number(saved.prices && saved.prices[id]);
-      if (Number.isFinite(price) && price > 0) base.prices[id] = round2(Math.min(price, 999));
+      if (Number.isFinite(price) && price > 0) base.prices[id] = round2(Math.min(999, Math.max(0.1, price)));
       if (saved.packages && Array.isArray(saved.packages[id])) {
         const kept = saved.packages[id].filter((x) => PACKAGE_IDS.includes(x));
         if (kept.length) base.packages[id] = kept;
@@ -129,7 +141,18 @@
   let admin = loadAdmin();
 
   function saveAdmin() {
-    writeJson(STORAGE.admin, admin);
+    if (!permitted('providers')) return false;
+    return writeJson(STORAGE.admin, admin);
+  }
+
+  function commitAdmin(message) {
+    const saved = saveAdmin();
+    if (!saved) admin = loadAdmin();
+    renderProviderPanel();
+    refreshBoundSelects();
+    if (!saved) toast('本地预览保存失败，未发布任何配置');
+    else if (message) toast(message + '（仅本地预览，未发布）');
+    return saved;
   }
 
   function providerBase(id) {
@@ -199,7 +222,7 @@
     if (!chain.length) return '未启用任何服务商，自动翻译暂停';
     const prefix = manualId && chain[0] === manualId
       ? '本次手动：'
-      : (getCustomerDefault() && chain[0] === getCustomerDefault() ? '客户偏好：' : '后台顺序：');
+      : (getCustomerDefault() && chain[0] === getCustomerDefault() ? '客户偏好：' : '本地预览顺序：');
     return prefix + chainNames(chain);
   }
 
@@ -209,19 +232,20 @@
   }
 
   function setCustomerDefault(id) {
-    const valid = id && isUsable(id) ? id : '';
-    writeStorage(STORAGE.customerDefault, valid);
+    if (!permitted('translate')) return false;
+    if (typeof id !== 'string' || (id && !isUsable(id))) return false;
+    if (!writeStorage(STORAGE.customerDefault, id)) return false;
     refreshBoundSelects();
-    return valid;
+    return id;
   }
 
   function providerOptionsHtml(selected, autoText) {
     const usable = usableIds();
     const current = selected && usable.includes(selected) ? selected : '';
-    const head = `<option value="">${esc(autoText || '自动（按后台顺序降级）')}</option>`;
+    const head = `<option value="">${esc(autoText || '自动（按本地预览顺序降级）')}</option>`;
     const list = usable.map((id) => {
       const p = providerInfo(id);
-      return `<option value="${esc(id)}"${current === id ? ' selected' : ''}>${esc(p.name)} · ${esc(p.price)} 额度/千字符</option>`;
+      return `<option value="${esc(id)}"${current === id ? ' selected' : ''}>${esc(p.name)} · ${esc(p.price)} 模拟额度/千字符</option>`;
     }).join('');
     return head + list;
   }
@@ -229,14 +253,14 @@
   function customerDefaultSelectHtml() {
     return `<label class="fx-field"><span>客户默认服务商</span>
       <select class="fx-select" id="fx-default-provider">${providerOptionsHtml(getCustomerDefault(), '自动（不指定客户偏好）')}</select>
-      <small>单次手动选择始终优先；未指定时按后台顺序逐级降级。</small>
+      <small>单次手动选择始终优先；未指定时按本地预览顺序逐级降级。</small>
     </label>
     <p class="fx-note" id="fx-chain-label">当前链路：${esc(providerChainLabel())}</p>`;
   }
 
   function panelProviderSelectHtml() {
     return `<label class="fx-field"><span>本次翻译服务商</span>
-      <select class="fx-select" id="fx-tr-provider">${providerOptionsHtml('', '自动（后台顺序 / 客户偏好）')}</select>
+      <select class="fx-select" id="fx-tr-provider">${providerOptionsHtml('', '自动（本地预览顺序 / 客户偏好）')}</select>
       <small id="fx-tr-chain">${esc(providerChainLabel())}</small>
     </label>`;
   }
@@ -252,7 +276,7 @@
     const trSelect = document.getElementById('fx-tr-provider');
     if (trSelect) {
       const current = trSelect.value;
-      trSelect.innerHTML = providerOptionsHtml(current, '自动（后台顺序 / 客户偏好）');
+      trSelect.innerHTML = providerOptionsHtml(current, '自动（本地预览顺序 / 客户偏好）');
       if (current && !usableIds().includes(current)) trSelect.value = '';
     }
     const trChain = document.getElementById('fx-tr-chain');
@@ -303,16 +327,20 @@
   }
 
   function updateUsageUI() {
-    const session = '本次会话已扣 ' + usage.cost.toFixed(2) + ' 额度 / ' + usage.chars + ' 字符';
+    const session = '本地模拟：' + usage.chars + ' 字符 / ' + usage.cost.toFixed(2) + ' 模拟额度；未调用真实 API，不扣账户余额';
     const providerUsage = document.getElementById('provider-usage');
     if (providerUsage) providerUsage.textContent = session;
     const shotBilling = document.getElementById('shot-billing');
-    if (shotBilling) shotBilling.textContent = '字符计费 · ' + usage.chars + ' 字符 / ' + usage.cost.toFixed(2) + ' 额度';
+    if (shotBilling) shotBilling.textContent = '本地模拟（不扣账户余额）· ' + usage.chars + ' 字符 / ' + usage.cost.toFixed(2) + ' 模拟额度';
   }
 
   function runPanelTranslation(text, manualId) {
-    const source = String(text == null ? '' : text).trim();
+    if (!permitted('translate')) return { ok: false, error: '当前身份没有翻译权限' };
+    const raw = String(text == null ? '' : text);
+    if (raw.length > 10000) return { ok: false, error: '本地模拟最多支持 10000 字符' };
+    const source = raw.trim();
     if (!source) return { ok: false, error: '请先输入原文' };
+    if (manualId && !providerBase(manualId)) return { ok: false, error: '无效服务商' };
     const chain = resolveChain(manualId);
     if (!chain.length) return { ok: false, error: '未启用任何翻译服务商，请联系平台管理员' };
     const provider = providerInfo(chain[0]);
@@ -327,7 +355,7 @@
       chars,
       cost,
       demo: true,
-      meta: provider.name + ' · ' + chars + ' 字符 · 扣 ' + cost.toFixed(2) + ' 额度 · 链路 ' + chainNames(chain) + '（演示译文，未调用真实 API）'
+      meta: provider.name + ' · 模拟 ' + chars + ' 字符 · 模拟成本 ' + cost.toFixed(2) + ' 模拟额度 · 本地预览链路 ' + chainNames(chain) + '（未发布，未调用真实 API，不扣账户余额）'
     };
   }
 
@@ -349,20 +377,31 @@
         <div class="provider-packages">${packages}</div>
         <div class="provider-price">
           <input type="number" min="0.1" max="999" step="0.1" value="${esc(info.price)}" data-provider-price data-provider="${esc(id)}" />
-          <span>额度 / 千字符</span>
+          <span>模拟额度 / 千字符</span>
         </div>
         <button class="provider-status${info.enabled ? ' is-on' : ''}" type="button" data-provider-toggle data-provider="${esc(id)}">${info.enabled ? '启用' : '停用'}</button>
       </div>`;
     }).join('');
   }
 
+  function clearProviderPanel() {
+    ['provider-rows', 'provider-chain'].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.replaceChildren();
+    });
+    const modal = document.getElementById('provider-modal');
+    if (modal) modal.hidden = true;
+    draggingProviderId = '';
+  }
+
   function renderProviderPanel() {
+    if (!access.can('providers')) { clearProviderPanel(); return false; }
     const chain = document.getElementById('provider-chain');
     if (chain) {
       chain.innerHTML = backendOrder().map((id) => {
         const info = providerInfo(id);
         const usable = isUsable(id);
-        return `<span class="provider-pill${usable ? '' : ' is-off'}">${esc(info.name)}<em>${usable ? esc(info.price) + ' 额度' : '停用 / 不可见'}</em></span>`;
+        return `<span class="provider-pill${usable ? '' : ' is-off'}">${esc(info.name)}<em>${usable ? esc(info.price) + ' 模拟额度' : '停用 / 不可见'}</em></span>`;
       }).join('<span class="provider-arrow">→</span>') || '<span class="provider-pill is-off">暂无服务商</span>';
     }
     const rows = document.getElementById('provider-rows');
@@ -371,9 +410,11 @@
   }
 
   function openProviderPanel() {
+    if (!permitted('providers')) { clearProviderPanel(); return false; }
     renderProviderPanel();
     const modal = document.getElementById('provider-modal');
     if (modal) modal.hidden = false;
+    return Boolean(modal);
   }
 
   let draggingProviderId = '';
@@ -383,32 +424,37 @@
     const rows = document.getElementById('provider-rows');
     if (!modal || !rows) return;
 
+    const guard = (e) => {
+      if (access.can('providers')) return true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      clearProviderPanel();
+      return false;
+    };
+    ['click', 'change', 'input', 'dragstart', 'dragover', 'drop', 'dragend'].forEach((type) => {
+      modal.addEventListener(type, guard, true);
+    });
+
     modal.addEventListener('click', (e) => {
+      if (!guard(e)) return;
       const toggle = e.target.closest('[data-provider-toggle]');
       if (toggle) {
         const id = toggle.dataset.provider;
-        if (admin.enabled[id] !== undefined) {
-          admin.enabled[id] = !admin.enabled[id];
-          saveAdmin();
-          renderProviderPanel();
-          refreshBoundSelects();
-          toast(admin.enabled[id] ? '已启用 ' + providerName(id) : '已停用 ' + providerName(id));
-        }
+        if (!providerBase(id)) return;
+        admin.enabled[id] = !admin.enabled[id];
+        commitAdmin(admin.enabled[id] ? '已启用 ' + providerName(id) : '已停用 ' + providerName(id));
         return;
       }
-      if (e.target.closest('#provider-save')) {
-        saveAdmin();
-        renderProviderPanel();
-        refreshBoundSelects();
-        toast('运营配置已保存（本地）');
-      }
+      if (e.target.closest('#provider-save')) commitAdmin('预览配置已保存');
     });
 
     modal.addEventListener('change', (e) => {
+      if (!guard(e)) return;
       const pkg = e.target.closest('[data-provider-pkg]');
       if (pkg) {
         const id = pkg.dataset.provider;
         const name = pkg.dataset.providerPkg;
+        if (!providerBase(id) || !PACKAGE_IDS.includes(name)) return;
         let list = (admin.packages[id] || []).slice();
         if (pkg.checked && !list.includes(name)) list.push(name);
         if (!pkg.checked) list = list.filter((x) => x !== name);
@@ -418,28 +464,26 @@
           return;
         }
         admin.packages[id] = list;
-        saveAdmin();
-        renderProviderPanel();
-        refreshBoundSelects();
+        commitAdmin();
         return;
       }
       const price = e.target.closest('[data-provider-price]');
       if (price) {
         const id = price.dataset.provider;
+        if (!providerBase(id)) return;
         let value = Number(price.value);
         if (!Number.isFinite(value) || value <= 0) value = providerInfo(id).price;
         value = round2(Math.min(999, Math.max(0.1, value)));
         admin.prices[id] = value;
         price.value = String(value);
-        saveAdmin();
-        renderProviderPanel();
-        refreshBoundSelects();
+        commitAdmin();
       }
     });
 
     rows.addEventListener('dragstart', (e) => {
+      if (!guard(e)) return;
       const row = e.target.closest('.provider-row');
-      if (!row) return;
+      if (!row || !providerBase(row.dataset.provider)) { e.preventDefault(); return; }
       draggingProviderId = row.dataset.provider;
       row.classList.add('is-dragging');
       if (e.dataTransfer) {
@@ -449,7 +493,7 @@
     });
 
     rows.addEventListener('dragover', (e) => {
-      if (!draggingProviderId) return;
+      if (!guard(e) || !providerBase(draggingProviderId)) return;
       e.preventDefault();
       const row = e.target.closest('.provider-row');
       rows.querySelectorAll('.provider-row').forEach((r) => {
@@ -458,14 +502,14 @@
     });
 
     rows.addEventListener('drop', (e) => {
-      if (!draggingProviderId) return;
+      if (!guard(e) || !providerBase(draggingProviderId)) return;
       e.preventDefault();
       const row = e.target.closest('.provider-row');
       const targetId = row && row.dataset.provider;
       const moving = draggingProviderId;
       draggingProviderId = '';
       rows.querySelectorAll('.provider-row').forEach((r) => r.classList.remove('is-drop-target', 'is-dragging'));
-      if (!targetId || targetId === moving) return;
+      if (!providerBase(targetId) || targetId === moving) return;
       const order = admin.order.slice();
       const from = order.indexOf(moving);
       const targetIndex = order.indexOf(targetId);
@@ -475,13 +519,11 @@
       const insertAt = to < 0 ? order.length : (from < targetIndex ? to + 1 : to);
       order.splice(insertAt, 0, moving);
       admin.order = order;
-      saveAdmin();
-      renderProviderPanel();
-      refreshBoundSelects();
-      toast('已调整自动降级顺序');
+      commitAdmin('已调整预览降级顺序');
     });
 
-    rows.addEventListener('dragend', () => {
+    rows.addEventListener('dragend', (e) => {
+      if (!guard(e)) return;
       draggingProviderId = '';
       rows.querySelectorAll('.provider-row').forEach((r) => r.classList.remove('is-drop-target', 'is-dragging'));
     });
@@ -573,6 +615,45 @@
   const baseCanvas = document.createElement('canvas');
   const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
   const mosaicTmp = document.createElement('canvas');
+  const MAX_PNG_URL = 24 * 1024 * 1024;
+
+  function safeImageSize(width, height) {
+    return width > 0 && height > 0 && width <= 16384 && height <= 16384
+      && width * height <= 32 * 1024 * 1024;
+  }
+
+  function validPng(dataUrl) {
+    if (typeof dataUrl !== 'string' || dataUrl.length > MAX_PNG_URL
+      || !dataUrl.startsWith('data:image/png;base64,')) return false;
+    const encoded = dataUrl.slice(22);
+    if (encoded.length < 44 || encoded.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return false;
+    try {
+      const header = atob(encoded.slice(0, 44));
+      if (header.slice(0, 8) !== '\x89PNG\r\n\x1a\n' || header.slice(12, 16) !== 'IHDR') return false;
+      const view = new DataView(Uint8Array.from(header, (c) => c.charCodeAt(0)).buffer);
+      return view.getUint32(8) === 13 && safeImageSize(view.getUint32(16), view.getUint32(20));
+    } catch { return false; }
+  }
+
+  function sessionGuard(permission = 'screenshot') {
+    const session = sessionRevision;
+    const identity = access.get();
+    const scope = identity && identity.scope;
+    const revision = identity && identity.revision;
+    return () => {
+      const current = access.get();
+      return Boolean(identity && current && access.can(permission) && session === sessionRevision
+        && current.scope === scope && current.revision === revision);
+    };
+  }
+
+  function operationGuard() {
+    const validSession = sessionGuard();
+    const operation = operationRevision;
+    const shotId = studio.activeShotId;
+    return () => validSession() && operation === operationRevision
+      && Boolean(shotId) && shotId === studio.activeShotId && studio.open;
+  }
 
   function cacheStudioEls() {
     els.root = document.getElementById('shot-studio');
@@ -717,7 +798,7 @@
       return;
     }
     if (els.engineWrap) els.engineWrap.hidden = false;
-    els.engine.innerHTML = providerOptionsHtml(studio.manualEngine, '自动（按后台顺序降级）');
+    els.engine.innerHTML = providerOptionsHtml(studio.manualEngine, '自动（按本地预览顺序降级）');
     els.engine.value = studio.manualEngine && usableIds().includes(studio.manualEngine) ? studio.manualEngine : '';
     const chain = resolveChain(studio.manualEngine);
     if (!chain.length) {
@@ -725,7 +806,7 @@
       return;
     }
     const provider = providerInfo(chain[0]);
-    els.engineNote.textContent = providerChainLabel(studio.manualEngine) + '；本次使用 ' + provider.name + '（' + provider.price + ' 额度/千字符，演示）';
+    els.engineNote.textContent = providerChainLabel(studio.manualEngine) + '；本次使用 ' + provider.name + '（' + provider.price + ' 模拟额度/千字符，演示）';
   }
 
   function currentText() {
@@ -761,6 +842,14 @@
     if (els.copy) els.copy.textContent = mode === 'copy' ? '复制图片' : '复制全文';
     if (els.insert) els.insert.hidden = mode === 'copy';
     if (els.again) els.again.hidden = mode === 'copy';
+    if (els.copy) els.copy.disabled = !studio.image || !access.can('screenshot');
+    if (els.insert) els.insert.disabled = !studio.image || !access.can('screenshot');
+    if (els.again) els.again.disabled = !studio.image || !access.can('screenshot');
+    if (!studio.sourceImage || !access.can('screenshot')) {
+      setSideHead('SCREENSHOT', '截屏工作台', '本地预览');
+      els.sideBody.innerHTML = '<div class="shot-empty">暂无截图。仅有截屏权限的身份可以开始。</div>';
+      return;
+    }
 
     if (studio.loading) {
       setSideHead(mode === 'extract' ? 'OCR' : 'OCR + TRANSLATE', mode === 'extract' ? '识别文字' : '识别并翻译', '原图识别');
@@ -812,16 +901,16 @@
     els.sideBody.innerHTML = `<div class="shot-result-meta">
         <span class="shot-meta-pill is-accent">${esc(tr.provider.name)} · 演示</span>
         <span class="shot-meta-pill">${tr.pairs.length} 行</span>
-        <span class="shot-meta-pill">${tr.chars} 字符 · ${tr.cost.toFixed(2)} 额度</span>
+        <span class="shot-meta-pill">${tr.chars} 字符 · ${tr.cost.toFixed(2)} 模拟额度</span>
         <span class="shot-meta-pill">${esc(tr.chain.map(providerName).join(' → '))}</span>
       </div>
       ${linesHtml(tr.pairs, true)}
-      <p class="fx-note">演示译文：未调用真实服务商 API；术语库已注入，OCR 读取的是未标注原图。</p>`;
+      <p class="fx-note">本地未发布预览：未调用真实服务商 API，不扣账户余额；术语库已注入，OCR 读取未标注原图。</p>`;
   }
 
   function updateBillingUI() {
     if (!els.billing) return;
-    els.billing.textContent = '字符计费 · ' + usage.chars + ' 字符 / ' + usage.cost.toFixed(2) + ' 额度';
+    els.billing.textContent = '本地模拟（不扣账户余额）· ' + usage.chars + ' 字符 / ' + usage.cost.toFixed(2) + ' 模拟额度';
   }
 
   function formatTime(time) {
@@ -1141,7 +1230,8 @@
     els.textInput.style.left = Math.max(4, Math.min(left, stageRect.width - 160)) + 'px';
     els.textInput.style.top = Math.max(4, top - 30) + 'px';
     els.textInput.style.fontSize = Math.max(11, Math.min(20, studio.toolSizes.text * scale)) + 'px';
-    setTimeout(() => els.textInput.focus(), 0);
+    const valid = operationGuard();
+    setTimeout(() => { if (valid() && studio.textPoint === point) els.textInput.focus(); }, 0);
   }
 
   function hideTextInput() {
@@ -1153,7 +1243,7 @@
   }
 
   function commitTextInput() {
-    if (!studio.textPoint || !els.textInput) return;
+    if (!access.can('screenshot') || !studio.open || !studio.image || !studio.textPoint || !els.textInput) return;
     const text = els.textInput.value.trim();
     const point = studio.textPoint;
     if (text) {
@@ -1199,7 +1289,7 @@
   }
 
   function onCanvasDown(e) {
-    if (e.button !== 0 || !studio.open) return;
+    if (!access.can('screenshot') || !studio.image || e.button !== 0 || !studio.open) return;
     if (studio.pick) {
       pickColor(e);
       return;
@@ -1254,7 +1344,7 @@
   }
 
   function onCanvasMove(e) {
-    if (!studio.open) return;
+    if (!access.can('screenshot') || !studio.image || !studio.open) return;
     const point = pointFromEvent(e);
     if (studio.erasing) {
       eraseAt(point);
@@ -1273,7 +1363,7 @@
   }
 
   function onCanvasUp() {
-    if (!studio.open) return;
+    if (!access.can('screenshot') || !studio.image || !studio.open) return;
     if (studio.erasing) {
       studio.erasing = false;
       if (studio.erased) commitHistory();
@@ -1362,6 +1452,9 @@
   }
 
   function recognizeImage() {
+    if (!access.can('screenshot') || !validPng(studio.sourceImage)) {
+      return Promise.resolve({ ok: false, error: '截屏权限或 PNG 图片无效' });
+    }
     if (studio.demo) {
       return Promise.resolve({ ok: true, lines: DEMO_LINES.slice(), lang: 'zh-Hans-CN', demo: true });
     }
@@ -1379,13 +1472,17 @@
       .catch((err) => ({ ok: false, error: err.message || 'OCR 识别失败' }));
   }
 
-  async function ensureOcr(force) {
+  async function ensureOcr(force, valid = operationGuard()) {
+    if (!valid() || !studio.image) return false;
     if (studio.ocr && !force) return true;
     studio.loading = 'ocr';
     studio.error = '';
     studio.translation = null;
     renderSide();
-    const result = await recognizeImage();
+    let result;
+    try { result = await recognizeImage(); }
+    catch (err) { result = { ok: false, error: err.message || 'OCR 识别失败' }; }
+    if (!valid()) return false;
     studio.loading = '';
     if (!result.ok) {
       studio.ocr = null;
@@ -1398,8 +1495,8 @@
     return true;
   }
 
-  async function ensureTranslation(force) {
-    if (!studio.ocr) return false;
+  async function ensureTranslation(force, valid = operationGuard()) {
+    if (!valid() || !permitted('translate') || !studio.ocr) return false;
     if (studio.translation && !force) return true;
     studio.loading = 'translate';
     renderSide();
@@ -1427,26 +1524,31 @@
   }
 
   async function runMode(mode, options) {
+    if (!permitted('screenshot') || !studio.open || !studio.image) return false;
+    const chosen = MODE_IDS.has(mode) ? mode : getDefaultMode();
+    if (['translate', 'edit'].includes(chosen) && !permitted('translate')) return false;
+    operationRevision += 1;
+    const valid = operationGuard();
     const opts = options || {};
-    studio.mode = MODE_IDS.has(mode) ? mode : getDefaultMode();
+    studio.mode = chosen;
     studio.error = '';
+    studio.loading = '';
     renderModes();
     renderEngine();
     renderSide();
     if (studio.mode === 'copy') {
-      if (!studio.copied || opts.force) await copyImage();
+      if (!studio.copied || opts.force) await copyImage(valid);
+      if (!valid()) return false;
       renderSide();
-      return;
+      return true;
     }
-    if (studio.mode === 'extract') {
-      await ensureOcr(Boolean(opts.force));
-      renderSide();
-      return;
-    }
-    const hasOcr = await ensureOcr(Boolean(opts.force));
-    if (hasOcr) await ensureTranslation(Boolean(opts.force));
+    const hasOcr = await ensureOcr(Boolean(opts.force), valid);
+    if (!valid()) return false;
+    if (hasOcr && chosen !== 'extract') await ensureTranslation(Boolean(opts.force), valid);
+    if (!valid()) return false;
     renderSide();
     updateBillingUI();
+    return hasOcr;
   }
 
   function dataUrlToBlob(dataUrl) {
@@ -1458,15 +1560,16 @@
     return new Blob([bytes], { type: mime });
   }
 
-  async function copyImage() {
+  async function copyImage(valid = operationGuard()) {
+    if (!permitted('screenshot') || !valid() || !studio.image) return false;
     const dataUrl = els.canvas && els.canvas.width ? els.canvas.toDataURL('image/png') : '';
-    if (!dataUrl) return false;
+    if (!validPng(dataUrl)) return false;
     let ok = false;
     try {
       const api = window.haituo && window.haituo.clipboard;
       if (api && api.writeImage) {
         const res = await api.writeImage(dataUrl);
-        ok = !res || res.ok !== false;
+        ok = Boolean(res && res.ok === true);
       } else if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': dataUrlToBlob(dataUrl) })]);
         ok = true;
@@ -1474,12 +1577,16 @@
     } catch {
       ok = false;
     }
+    if (!valid()) return false;
     studio.copied = ok;
     toast(ok ? '已复制图片到剪贴板' : '当前环境无法写入图片剪贴板');
     return ok;
   }
 
   async function copyText(text) {
+    if (!permitted('screenshot')) return false;
+    const valid = operationGuard();
+    if (!valid()) return false;
     if (!text) {
       toast('暂无可复制的文字');
       return;
@@ -1489,7 +1596,7 @@
       const api = window.haituo && window.haituo.clipboard;
       if (api && api.write) {
         const res = await api.write(text);
-        ok = !res || res.ok !== false;
+        ok = Boolean(res && res.ok === true);
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(text);
         ok = true;
@@ -1497,10 +1604,13 @@
     } catch {
       ok = false;
     }
+    if (!valid()) return false;
     toast(ok ? '已复制全文' : '复制失败，请手动选择文字');
+    return ok;
   }
 
   function insertToComposer(text) {
+    if (!permitted('screenshot') || !studio.open) return false;
     if (!text) {
       toast('暂无可插入的文字');
       return;
@@ -1521,35 +1631,45 @@
 
   let loadToken = 0;
 
-  function loadImage(dataUrl) {
-    return new Promise((resolve, reject) => {
+  function loadImage(dataUrl, valid = operationGuard()) {
+    if (!valid() || !validPng(dataUrl)) return Promise.resolve(false);
+    return new Promise((resolve) => {
       const token = ++loadToken;
       const image = new Image();
       image.onload = () => {
-        if (token !== loadToken) return;
-        const maxSide = 2400;
-        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-        const width = Math.max(1, Math.round(image.naturalWidth * scale));
-        const height = Math.max(1, Math.round(image.naturalHeight * scale));
-        els.canvas.width = width;
-        els.canvas.height = height;
-        baseCanvas.width = width;
-        baseCanvas.height = height;
-        baseCtx.clearRect(0, 0, width, height);
-        baseCtx.drawImage(image, 0, 0, width, height);
-        studio.image = image;
-        renderCanvas();
-        resolve();
+        if (token !== loadToken || !valid()) { resolve(false); return; }
+        if (!safeImageSize(image.naturalWidth, image.naturalHeight)) { resolve(false); return; }
+        try {
+          const maxSide = 2400;
+          const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+          const width = Math.max(1, Math.round(image.naturalWidth * scale));
+          const height = Math.max(1, Math.round(image.naturalHeight * scale));
+          els.canvas.width = width;
+          els.canvas.height = height;
+          baseCanvas.width = width;
+          baseCanvas.height = height;
+          baseCtx.clearRect(0, 0, width, height);
+          baseCtx.drawImage(image, 0, 0, width, height);
+          studio.image = image;
+          renderCanvas();
+          resolve(true);
+        } catch { resolve(false); }
       };
-      image.onerror = () => reject(new Error('截图图片加载失败'));
+      image.onerror = () => resolve(false);
       image.src = dataUrl;
     });
   }
 
-  function makeThumb(dataUrl) {
+  function makeThumb(dataUrl, valid = operationGuard()) {
+    if (!valid() || !validPng(dataUrl)) return Promise.resolve('');
+    const token = loadToken;
     return new Promise((resolve) => {
       const image = new Image();
       image.onload = () => {
+        if (!valid() || token !== loadToken || !safeImageSize(image.naturalWidth, image.naturalHeight)) {
+          resolve('');
+          return;
+        }
         try {
           const canvas = document.createElement('canvas');
           canvas.width = 108;
@@ -1576,17 +1696,19 @@
   }
 
   function saveActiveRecord() {
+    if (!access.can('screenshot') || !studio.image) return;
+    const valid = operationGuard();
     const record = currentRecord();
-    if (!record) return;
+    if (!record || !valid()) return;
     record.strokes = deepCopy(studio.strokes);
     record.ocr = studio.ocr;
     record.mode = studio.mode;
     record.demo = studio.demo;
     if (els.canvas && els.canvas.width) {
       try {
-        const snapshot = els.canvas.toDataURL('image/jpeg', 0.72);
-        makeThumb(snapshot).then((thumb) => {
-          if (thumb) {
+        const snapshot = els.canvas.toDataURL('image/png');
+        makeThumb(snapshot, valid).then((thumb) => {
+          if (thumb && valid() && currentRecord() === record) {
             record.thumb = thumb;
             updateRecentStrip();
           }
@@ -1598,9 +1720,14 @@
   }
 
   async function activateShot(record, demo) {
+    if (!permitted('screenshot') || !els.root || !record || !studio.shots.includes(record)
+      || !validPng(record.image)) return false;
+    operationRevision += 1;
     studio.activeShotId = record.id;
     studio.demo = Boolean(demo);
     studio.sourceImage = record.image;
+    studio.image = null;
+    clearCanvases();
     studio.mode = MODE_IDS.has(record.mode) ? record.mode : getDefaultMode();
     studio.ocr = record.ocr || null;
     studio.translation = null;
@@ -1609,24 +1736,40 @@
     studio.manualEngine = '';
     studio.copied = false;
     studio.strokes = deepCopy(record.strokes || []);
+    studio.snapshots = [];
+    studio.snapIndex = -1;
     studio.current = null;
     studio.drawing = false;
     studio.erasing = false;
+    studio.erased = false;
     studio.pick = false;
     studio.numbers = maxNumber(studio.strokes);
     hideTextInput();
     if (typeof window.closePanel === 'function') window.closePanel();
     els.root.hidden = false;
     studio.open = true;
-    await loadImage(record.image);
+    const valid = operationGuard();
+    renderAll();
+    const loaded = await loadImage(record.image, valid);
+    if (!valid()) return false;
+    if (!loaded) {
+      studio.error = '截图图片加载失败或超出安全范围';
+      renderSide();
+      return false;
+    }
     resetHistory();
     renderAll();
     updateHotkeyUI();
-    await runMode(studio.mode, { force: !studio.ocr });
+    const thumb = await makeThumb(record.image, valid);
+    if (!valid()) return false;
+    record.thumb = thumb;
+    updateRecentStrip();
+    // runMode owns the next operation revision; it checks its own results after awaits.
+    return runMode(studio.mode, { force: !studio.ocr });
   }
 
   function openStudio(payload, options) {
-    if (!payload || !payload.image) return;
+    if (!permitted('screenshot') || !payload || !validPng(payload.image)) return false;
     saveActiveRecord();
     const mode = MODE_IDS.has(payload.mode) ? payload.mode : getDefaultMode();
     const record = {
@@ -1641,23 +1784,30 @@
     };
     studio.shots.unshift(record);
     if (studio.shots.length > 8) studio.shots.pop();
-    activateShot(record, record.demo).catch((err) => {
-      toast('打开截屏工作台失败：' + (err.message || err));
+    const pending = activateShot(record, record.demo);
+    const valid = operationGuard();
+    return pending.catch((err) => {
+      if (valid()) toast('打开截屏工作台失败：' + (err.message || err));
+      return false;
     });
   }
 
   function reopenShot(id) {
+    if (!permitted('screenshot')) return false;
     const record = studio.shots.find((shot) => shot.id === id);
-    if (!record) return;
-    if (record.id === studio.activeShotId) return;
+    if (!record || (record.id === studio.activeShotId && studio.open)) return false;
     saveActiveRecord();
-    activateShot(record, record.demo).catch((err) => {
-      toast('重新打开截图失败：' + (err.message || err));
+    const pending = activateShot(record, record.demo);
+    const valid = operationGuard();
+    return pending.catch((err) => {
+      if (valid()) toast('重新打开截图失败：' + (err.message || err));
+      return false;
     });
   }
 
   function openDemoStudio(mode) {
-    openStudio({
+    if (!permitted('screenshot')) return false;
+    return openStudio({
       ok: true,
       mode: MODE_IDS.has(mode) ? mode : getDefaultMode(),
       image: demoImage(),
@@ -1666,11 +1816,62 @@
   }
 
   function closeStudio() {
-    if (!studio.open) return;
-    saveActiveRecord();
+    if (studio.open) saveActiveRecord();
+    operationRevision += 1;
+    loadToken += 1;
     studio.open = false;
+    studio.loading = '';
+    studio.current = null;
+    studio.drawing = false;
+    studio.erasing = false;
     if (els.root) els.root.hidden = true;
     hideTextInput();
+  }
+
+  function clearCanvases() {
+    [els.canvas, baseCanvas, mosaicTmp].forEach((canvas) => {
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+    });
+  }
+
+  function resetSession() {
+    sessionRevision += 1;
+    operationRevision += 1;
+    loadToken += 1;
+    // Never persist the departing identity's state while resetting for the next identity.
+    Object.assign(studio, {
+      open: false, demo: false, mode: getDefaultMode(), sourceImage: '', image: null,
+      shots: [], activeShotId: '', ocr: null, translation: null,
+      strokes: [], snapshots: [], snapIndex: -1, current: null,
+      drawing: false, erasing: false, erased: false, numbers: 0, pick: false,
+      textPoint: null, loading: '', error: '', manualEngine: '', copied: false,
+      tool: 'pen', color: SHOT.defaults.pen,
+      toolColors: { pen: SHOT.defaults.pen, highlighter: SHOT.defaults.highlighter, text: SHOT.defaults.text },
+      toolSizes: { pen: 4, highlighter: 18, eraser: 20, text: 18, number: 24, pointer: 24 },
+      mosaicMode: 'brush', grain: (SHOT.mosaicGrain[1] && SHOT.mosaicGrain[1].value) || 12,
+      textStroke: true
+    });
+    const colors = readJson(STORAGE.recentColors, []);
+    studio.recentColors = Array.isArray(colors)
+      ? colors.filter((color) => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)).slice(0, 6) : [];
+    usage.chars = 0;
+    usage.cost = 0;
+    usage.calls = 0;
+    admin = loadAdmin();
+    hideTextInput();
+    clearCanvases();
+    clearProviderPanel();
+    if (els.root) els.root.hidden = true;
+    if (els.canvas) els.canvas.style.cursor = 'crosshair';
+    renderAll();
+    refreshBoundSelects();
+    updateUsageUI();
+    if (access.can('screenshot')) {
+      const api = window.haituo && window.haituo.screenshot;
+      if (api && api.setDefault) {
+        try { Promise.resolve(api.setDefault(studio.mode)).catch(() => {}); } catch { /* unavailable */ }
+      }
+    }
   }
 
   function getDefaultMode() {
@@ -1679,16 +1880,17 @@
   }
 
   function setDefaultMode(mode) {
-    if (!MODE_IDS.has(mode)) return getDefaultMode();
-    writeStorage(STORAGE.defaultMode, mode);
+    if (!permitted('screenshot') || !MODE_IDS.has(mode)) return false;
+    if (!writeStorage(STORAGE.defaultMode, mode)) return false;
     const api = window.haituo && window.haituo.screenshot;
     if (api && api.setDefault) {
-      Promise.resolve(api.setDefault(mode)).catch(() => {});
+      try { Promise.resolve(api.setDefault(mode)).catch(() => {}); } catch { /* unavailable */ }
     }
     return mode;
   }
 
   function screenshotSettingsHtml() {
+    if (!access.can('screenshot')) return '<p class="fx-note">当前身份没有截屏权限。</p>';
     const current = getDefaultMode();
     const modes = SHOT.modes.map((m) => `<option value="${esc(m.id)}"${current === m.id ? ' selected' : ''}>${esc(m.name)} · ${esc(m.hint)}</option>`).join('');
     return `<div class="fx-block">
@@ -1709,22 +1911,31 @@
   }
 
   async function startCapture(mode) {
+    if (!permitted('screenshot')) return false;
+    operationRevision += 1;
+    loadToken += 1;
+    studio.loading = '';
+    const validSession = sessionGuard();
+    const operation = operationRevision;
+    const valid = () => validSession() && operation === operationRevision;
     const chosen = MODE_IDS.has(mode) ? mode : getDefaultMode();
     const api = window.haituo && window.haituo.screenshot;
     if (!api || !api.start) {
       toast('预览环境：打开演示截屏');
-      openDemoStudio(chosen);
-      return;
+      return openDemoStudio(chosen);
     }
     try {
       const res = await api.start(chosen);
-      if (!res || res.ok === false) {
+      if (!valid()) return false;
+      if (!res || res.ok !== true) {
         toast((res && res.error) || '截屏启动失败');
-        return;
+        return false;
       }
       toast('拖动选区，双击执行「' + (MODE_NAMES[chosen] || chosen) + '」');
+      return true;
     } catch (err) {
-      toast('截屏启动失败：' + (err.message || err));
+      if (valid()) toast('截屏启动失败：' + (err.message || err));
+      return false;
     }
   }
 
@@ -1732,6 +1943,15 @@
 
   function bindStudioChrome() {
     if (!els.root) return;
+    ['click', 'dblclick', 'change', 'input', 'beforeinput', 'keydown', 'keyup', 'blur',
+      'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove',
+      'mouseup', 'touchstart', 'touchmove', 'touchend', 'paste', 'drop', 'dragstart'].forEach((type) => {
+      els.root.addEventListener(type, (event) => {
+        if (access.can('screenshot') && studio.open) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    });
     els.close.addEventListener('click', closeStudio);
     els.modes.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-shot-mode]');
@@ -1792,16 +2012,14 @@
     els.sideBody.addEventListener('click', (e) => {
       if (e.target.closest('[data-shot-retry]')) runMode(studio.mode, { force: true });
     });
-    els.engine.addEventListener('change', async () => {
-      studio.manualEngine = els.engine.value;
-      if (['translate', 'edit'].includes(studio.mode)) {
-        studio.translation = null;
-        await ensureTranslation(true);
-        renderSide();
-        updateBillingUI();
-      } else {
-        renderEngine();
-      }
+    els.engine.addEventListener('change', () => {
+      if (!permitted('screenshot') || !permitted('translate')) return;
+      const id = els.engine.value;
+      if (id && !isUsable(id)) return;
+      studio.manualEngine = id;
+      studio.translation = null;
+      if (['translate', 'edit'].includes(studio.mode)) runMode(studio.mode);
+      else renderEngine();
     });
     els.canvas.addEventListener('pointerdown', onCanvasDown);
     els.canvas.addEventListener('pointermove', onCanvasMove);
@@ -1823,7 +2041,7 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if (!studio.open || e.key !== 'Escape') return;
+      if (!access.can('screenshot') || !studio.open || e.key !== 'Escape') return;
       if (studio.textPoint) {
         hideTextInput();
       } else {
@@ -1839,16 +2057,17 @@
 
     document.addEventListener('change', (e) => {
       if (e.target.id === 'ss-default-mode') {
-        setDefaultMode(e.target.value);
-        toast('默认截屏模式：' + (MODE_NAMES[e.target.value] || e.target.value));
+        const mode = setDefaultMode(e.target.value);
+        if (mode !== false) toast('默认截屏模式：' + MODE_NAMES[mode]);
         return;
       }
       if (e.target.id === 'fx-default-provider') {
         const id = setCustomerDefault(e.target.value);
-        toast(id ? '客户默认服务商：' + providerName(id) : '已改为自动：按后台顺序降级');
+        if (id !== false) toast(id ? '客户默认服务商：' + providerName(id) : '已改为自动：按本地预览顺序降级');
         return;
       }
       if (e.target.id === 'fx-tr-provider') {
+        if (!permitted('translate') || (e.target.value && !isUsable(e.target.value))) return;
         const label = document.getElementById('fx-tr-chain');
         if (label) label.textContent = providerChainLabel(e.target.value);
       }
@@ -1867,17 +2086,19 @@
       const api = window.haituo && window.haituo.screenshot;
       if (api && api.onResult) {
         api.onResult((payload) => {
-          if (payload && payload.ok) openStudio(payload);
+          const identity = access.get();
+          if (!identity || !access.can('screenshot') || !payload || payload.ok !== true
+            || !Number.isSafeInteger(payload.revision) || payload.revision !== identity.revision
+            || typeof payload.scope !== 'string' || payload.scope !== identity.scope) return;
+          openStudio(payload);
         });
-      }
-      if (api && api.setDefault) {
-        try { api.setDefault(getDefaultMode()); } catch { /* ignore */ }
       }
     }
     updateUsageUI();
   }
 
-  window.HaituoStudio = {
+  window.HaituoStudio = Object.freeze({
+    resetSession,
     openProviderPanel,
     openStudio,
     openDemoStudio,
@@ -1906,7 +2127,7 @@
       chars: usage.chars,
       cost: usage.cost
     })
-  };
+  });
 
   init();
 })();

@@ -316,11 +316,6 @@ button {
   color: var(--warn);
 }
 
-.role-badge[data-role="agent"] {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
 .role-badge[data-role="demo"] {
   background: var(--accent-soft);
   color: var(--accent);
@@ -497,11 +492,6 @@ button {
 .mgmt-tag[data-role="owner"] {
   background: var(--warn-soft);
   color: var(--warn);
-}
-
-.mgmt-tag[data-role="agent"] {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 .btn-mini {

@@ -12,11 +12,13 @@ const brand = {
 
 contextBridge.exposeInMainWorld('haituo', {
   brand,
+  system: { fonts: () => ipcRenderer.invoke('system:fonts') },
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
     signUp: (email, password) => ipcRenderer.invoke('auth:signup', email, password),
     signIn: (email, password) => ipcRenderer.invoke('auth:signin', email, password),
     signOut: () => ipcRenderer.invoke('auth:signout'),
+    enterDemo: (role) => ipcRenderer.invoke('auth:demo', role),
     getSession: () => ipcRenderer.invoke('auth:session'),
     onAuthStateChange: (cb) => {
       const listener = (_e, payload) => cb(payload);
@@ -24,12 +26,15 @@ contextBridge.exposeInMainWorld('haituo', {
       return () => ipcRenderer.removeListener('auth:state', listener);
     }
   },
-  distribution: {
-    listProfiles: () => ipcRenderer.invoke('distribution:listProfiles'),
-    promoteToAgent: (email, rate) => ipcRenderer.invoke('distribution:promoteToAgent', email, rate),
-    demoteAgent: (userId) => ipcRenderer.invoke('distribution:demoteAgent', userId),
-    assignAgent: (userEmail, agentEmail) => ipcRenderer.invoke('distribution:assignAgent', userEmail, agentEmail),
-    listMyUsers: () => ipcRenderer.invoke('distribution:listMyUsers')
+  staff: {
+    list: () => ipcRenderer.invoke('staff:list'),
+    create: (params) => ipcRenderer.invoke('staff:create', params),
+    suspend: (staffId) => ipcRenderer.invoke('staff:suspend', staffId),
+    remove: (staffId) => ipcRenderer.invoke('staff:delete', staffId),
+    assignChannel: (staffId, channels) => ipcRenderer.invoke('staff:assignChannel', staffId, channels),
+    allocateChars: (staffId, chars) => ipcRenderer.invoke('staff:allocateChars', staffId, chars),
+    resetPassword: (targetId, password) => ipcRenderer.invoke('password:reset', targetId, password),
+    audit: () => ipcRenderer.invoke('audit:list')
   },
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
@@ -37,6 +42,17 @@ contextBridge.exposeInMainWorld('haituo', {
   },
   ocr: {
     recognize: (dataUrl) => ipcRenderer.invoke('ocr:recognize', dataUrl)
+  },
+  realtimeConfig: {
+    subscribe: () => ipcRenderer.invoke('realtime-config:subscribe'),
+    snapshot: () => ipcRenderer.invoke('realtime-config:snapshot'),
+    set: (key, value, scope) => ipcRenderer.invoke('realtime-config:set', key, value, scope),
+    unsubscribe: () => ipcRenderer.invoke('realtime-config:unsubscribe'),
+    onEvent: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('realtime-config:event', listener);
+      return () => ipcRenderer.removeListener('realtime-config:event', listener);
+    }
   },
   screenshot: {
     start: (mode) => ipcRenderer.invoke('screenshot:start', mode),
@@ -48,9 +64,37 @@ contextBridge.exposeInMainWorld('haituo', {
       return () => ipcRenderer.removeListener('screenshot:result', listener);
     }
   },
+  webchannels: {
+    open: (accountId, channel) => ipcRenderer.invoke('webchannels:open', accountId, channel),
+    setBounds: (accountId, rect) => ipcRenderer.invoke('webchannels:setBounds', accountId, rect),
+    setVisible: (accountId, visible) => ipcRenderer.invoke('webchannels:setVisible', accountId, visible),
+    sleep: (accountId) => ipcRenderer.invoke('webchannels:sleep', accountId),
+    refresh: (accountId) => ipcRenderer.invoke('webchannels:refresh', accountId),
+    destroyAll: () => ipcRenderer.invoke('webchannels:destroyAll'),
+    onEvent: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('webchannels:event', listener);
+      return () => ipcRenderer.removeListener('webchannels:event', listener);
+    }
+  },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
     close: () => ipcRenderer.invoke('window:close')
+  },
+  appSettings: {
+    get: () => ipcRenderer.invoke('app-settings:get'),
+    set: (partial) => ipcRenderer.invoke('app-settings:set', partial),
+    checkUpdate: () => ipcRenderer.invoke('app-settings:checkUpdate'),
+    onTheme: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('app-settings:theme', listener);
+      return () => ipcRenderer.removeListener('app-settings:theme', listener);
+    },
+    onUpdateState: (cb) => {
+      const listener = (_e, payload) => cb(payload);
+      ipcRenderer.on('app-settings:update-state', listener);
+      return () => ipcRenderer.removeListener('app-settings:update-state', listener);
+    }
   }
 });

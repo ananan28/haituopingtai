@@ -1,0 +1,99 @@
+/* =========================================================
+   应用设置页（窗口：应用设置模块）
+   分段选择器 + 状态行 + 浅色主题首轮覆盖
+   ========================================================= */
+
+.as-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.as-seg-btn {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.as-seg-btn:hover {
+  color: var(--text);
+}
+
+.as-seg-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.as-status {
+  margin-top: 12px;
+  min-height: 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ---------- 浅色主题（首轮覆盖：核心变量 + 外壳硬编码面） ---------- */
+
+html[data-theme="light"] {
+  --bg: #eef0f4;
+  --bg-panel: #ffffff;
+  --bg-sidebar: #e3e6ec;
+  --border: #d3d8e1;
+  --text: #20242c;
+  --text-dim: #5c6574;
+  --accent: #6a4ee0;
+  --accent-soft: rgba(106, 78, 224, 0.14);
+  --danger: #d64545;
+  --ok: #5b3fd4;
+  --warn: #c98a00;
+  --warn-soft: rgba(201, 138, 0, 0.14);
+  --bar: #e6e9ef;
+  --rail: #e0e3ea;
+  --embed: #eef0f4;
+}
+
+html[data-theme="light"] .titlebar {
+  background: linear-gradient(180deg, #f4f5f8, #e9ebf0);
+}
+
+html[data-theme="light"] .hp-switch {
+  border-color: #c3c9d4;
+  background: #cdd3dd;
+}
+
+html[data-theme="light"] .hp-switch::after {
+  background: #ffffff;
+}
+
+/* platform 页（含本设置页）的硬编码深色面 */
+html[data-theme="light"] .platform-page {
+  color: var(--text);
+}
+
+html[data-theme="light"] .platform-card {
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+
+html[data-theme="light"] .platform-head p,
+html[data-theme="light"] .platform-card p {
+  color: var(--text-dim);
+}
+
+html[data-theme="light"] .platform-eyebrow {
+  color: #6a4ee0;
+}
+
+html[data-theme="light"] .platform-notice {
+  border-color: #d9d2f2;
+  background: #efeafd;
+  color: #5b4bb0;
+}

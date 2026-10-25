@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="workbench.css" />
   <link rel="stylesheet" href="studio.css" />
+  <link rel="stylesheet" href="platform.css" />
+  <link rel="stylesheet" href="webchannels.css" />
+  <link rel="stylesheet" href="app-settings.css" />
 </head>
 <body>
   <!-- 认证视图：未登录时显示 -->
@@ -54,8 +57,17 @@
           <button id="google-login" class="auth-oauth" type="button">使用 Google 登录</button>
         </div>
         <div class="auth-demo">
+          <label>选择离线演示视角
+            <select id="demo-role" class="fx-select">
+              <option value="user">商户 / 代理 · 自己的业务与余额</option>
+              <option value="staff">员工子账号 · 分配的账号与额度</option>
+              <option value="owner">所有者 · 平台管理</option>
+              <option value="admin">管理员 · 公告 / 定价 / 子账号</option>
+            </select>
+          </label>
           <button id="demo-login" class="auth-demo-btn" type="button">暂不登录，进入离线演示</button>
           <p id="demo-hint" class="auth-demo-hint" hidden>未连接服务器，可进入离线演示或配置后登录</p>
+          <p class="auth-demo-hint">进入演示会清除本机旧登录会话，不删除业务存档。正式管理员及员工身份尚未部署。</p>
         </div>
         <div class="auth-terms">
           登录/注册即代表你同意 <a href="#">服务协议</a> 与 <a href="#">隐私政策</a>
@@ -171,10 +183,10 @@
         <input id="catalog-search" type="search" placeholder="搜索渠道，例如 Telegram、WhatsApp…" autocomplete="off" />
         <span id="catalog-count" class="catalog-count"></span>
       </div>
-      <div class="catalog-notice">37 个渠道已进入服务注册表，首期仅提供配置预览，全部标记「即将上线」；自定义服务可填写 URL 预留内嵌位。</div>
+      <div class="catalog-notice">目录仅供配置预览，真实渠道未接入。已核验素材本地加载，未核验项目使用中性图标；来源可核验不代表商标授权或官方合作。</div>
       <div id="catalog-grid" class="catalog-grid"></div>
       <footer class="modal-foot">
-        <span>端口级隔离 · 每个账号独立 Cookie、指纹与会话分区</span>
+        <span>真实渠道 / Cookie 隔离 / 指纹适配器尚未接入</span>
         <button class="hp-ghost" data-close="channel-catalog" type="button">取消</button>
       </footer>
     </section>
@@ -206,7 +218,7 @@
 
           <label id="cfg-url-wrap" class="cfg-label" hidden>服务地址 URL
             <input id="cfg-url" type="url" placeholder="https://example.com/chat" autocomplete="off" />
-            <small class="cfg-help">自定义服务将以内嵌网页方式接入，独立会话分区与指纹。</small>
+            <small class="cfg-help">仅保存 URL 草稿；尚未创建内嵌网页、会话分区或指纹。</small>
           </label>
 
           <div class="cfg-coming">
@@ -236,7 +248,7 @@
           <div class="cfg-section">
             <div class="cfg-section-title">指纹保护</div>
             <label class="hp-toggle">
-              <span class="hp-toggle-copy"><strong>启用浏览器级指纹</strong><small>每账号独立 WebRTC / Canvas / 设备名</small></span>
+              <span class="hp-toggle-copy"><strong>启用浏览器级指纹</strong><small>预留参数，真实指纹适配器尚未接入</small></span>
               <input id="cfg-fingerprint" type="checkbox" checked />
               <span class="hp-switch"></span>
             </label>
@@ -361,7 +373,7 @@
     </section>
   </div>
 
-  <!-- 通用信息弹层（代理管理 / 我的用户 / 关于） -->
+  <!-- 通用信息弹层（关于） -->
   <div id="sheet-modal" class="modal-backdrop" hidden>
     <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <header class="modal-head">
@@ -435,41 +447,47 @@
     <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="provider-title">
       <header class="modal-head">
         <div>
-          <span class="modal-kicker">平台后台 · Owner</span>
-          <h2 id="provider-title">翻译服务商运营</h2>
+          <span class="modal-kicker">Owner · 本地未发布预览</span>
+          <h2 id="provider-title">翻译服务商配置预览</h2>
         </div>
         <button class="modal-close" data-close="provider-modal" type="button" title="关闭">×</button>
       </header>
       <div class="provider-body">
         <div class="provider-chain">
-          <span class="provider-chain-label">自动降级顺序</span>
+          <span class="provider-chain-label">本地预览降级顺序</span>
           <div id="provider-chain" class="provider-chain-list"></div>
         </div>
-        <p class="provider-rule">三级裁决：客户单次手动选择 → 客户默认偏好 → 后台默认顺序。客户侧不可见任何 API / Key，所有调用由平台托管。</p>
+        <p class="provider-rule">本地预览：单次手动选择 → 当前身份默认偏好 → 预览顺序。配置仅保存在当前身份本地空间，未发布；不调用真实服务商 API，不扣账户余额。</p>
         <div class="provider-head-row">
           <span>服务商</span>
-          <span>套餐可见性</span>
-          <span>额度 / 千字符</span>
-          <span>状态</span>
+          <span>预览套餐可见性</span>
+          <span>模拟额度 / 千字符</span>
+          <span>预览状态</span>
         </div>
         <div id="provider-rows" class="provider-rows"></div>
         <div class="provider-note">
-          <span>DeepL 成本最高：默认压底、单价最高。v1 唯一计费单位 = 翻译字符，按引擎单价扣额度。</span>
-          <span id="provider-usage">本次会话已扣 0 额度 / 0 字符</span>
+          <span>单价、套餐和顺序仅用于本地模拟；字符与成本计数不代表真实用量或账户扣款。</span>
+          <span id="provider-usage">本地模拟：0 字符 / 0 模拟额度；无真实 API 调用或账户扣款</span>
         </div>
       </div>
       <footer class="modal-foot">
-        <span>拖拽行可排序 · 修改即时保存到本地运营配置</span>
+        <span>拖拽行可排序 · 仅保存当前身份的本地预览，不发布</span>
         <div class="modal-foot-actions">
           <button class="hp-ghost" data-close="provider-modal" type="button">关闭</button>
-          <button id="provider-save" class="hp-primary" type="button">保存运营配置</button>
+          <button id="provider-save" class="hp-primary" type="button">保存本地预览</button>
         </div>
       </footer>
     </section>
   </div>
 
+  <script src="access.js"></script>
+  <script src="realtime-config.js"></script>
+  <script src="platform.js"></script>
   <script src="services.js"></script>
+  <script src="channel-icons.js"></script>
   <script src="shot-studio.js"></script>
+  <script src="webchannels-view.js"></script>
+  <script src="app-settings.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

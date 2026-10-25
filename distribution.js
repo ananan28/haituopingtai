@@ -14,96 +14,82 @@ function friendlyError(err) {
   return m;
 }
 
-// ---------- 分成（接口） ----------
-
-// 分成金额（纯函数）：金额 × 比例%，保留到分。里程碑4 字符扣费接入后复用。
-function computeCommission(amount, ratePercent) {
-  const cents = Math.round(Number(amount) * 100);
-  const rate = Number(ratePercent) || 0;
-  return Math.round((cents * rate) / 100) / 100;
+// 身份在 await 期间可能切换；每次 await 后、发写请求前必须复核。
+const SWITCHED = '身份已切换，写操作已取消';
+function switched(guard) {
+  return guard && !guard();
 }
 
-// 结算接口（占位）：里程碑后续实现真正的结算/出账
-async function settleAgentCommissions(_agentId) {
-  return { ok: false, error: '分成结算逻辑未实现（里程碑后续）' };
+// 服务端受控 RPC 结果统一处理：RPC 抛错由 Supabase 转 error。
+async function callRpc(name, params, guard) {
+  const c = client();
+  if (!c) return { ok: false, error: NOT_CONFIGURED };
+  const { data, error } = await c.rpc(name, params);
+  if (switched(guard)) return { ok: false, error: SWITCHED };
+  if (error) return { ok: false, error: friendlyError(error) };
+  return { ok: true, ...(data && typeof data === 'object' ? data : {}) };
 }
 
-// ---------- owner 操作（RLS 已强制 owner 权限） ----------
+// ---------- 子账号管理（受控 RPC，服务端角色校验 + 原子 + 审计） ----------
 
-async function listProfiles() {
+// 列出子账号：商户仅见自己名下（RLS owner_id=auth.uid()）；owner/admin 见全部；staff 仅见自己
+async function listStaff(guard) {
   const c = client();
   if (!c) return { ok: false, error: NOT_CONFIGURED };
   const { data, error } = await c
-    .from('profiles')
-    .select('id, email, role, agent_id, commission_rate, created_at')
+    .from('staff_accounts')
+    .select('id, owner_id, email, channel_allowlist, char_quota, char_used, status, note, created_at')
     .order('created_at', { ascending: true });
+  if (switched(guard)) return { ok: false, error: SWITCHED };
   if (error) return { ok: false, error: friendlyError(error) };
-  return { ok: true, profiles: data };
+  return { ok: true, staff: data };
 }
 
-async function promoteToAgent(email, commissionRate) {
+async function createStaff(params, guard) {
+  return callRpc('create_staff', params, guard);
+}
+
+async function suspendStaff(staffId, guard) {
+  return callRpc('suspend_staff', { p_staff: staffId }, guard);
+}
+
+async function deleteStaff(staffId, guard) {
+  return callRpc('delete_staff', { p_staff: staffId }, guard);
+}
+
+async function assignChannel(staffId, channels, guard) {
+  return callRpc('assign_channel', { p_staff: staffId, p_channels: channels }, guard);
+}
+
+async function allocateChars(staffId, chars, guard) {
+  return callRpc('allocate_chars', { p_staff: staffId, p_chars: chars }, guard);
+}
+
+async function resetPassword(targetId, password, guard) {
+  return callRpc('reset_password', { p_target: targetId, p_password: password }, guard);
+}
+
+// 审计日志（RLS：仅 owner/admin 可读）
+async function listAudit(guard) {
   const c = client();
   if (!c) return { ok: false, error: NOT_CONFIGURED };
-  const rate = Number(commissionRate);
-  if (!Number.isFinite(rate) || rate < 0 || rate > 100) return { ok: false, error: '分成比例需为 0–100' };
-  const { data: found, error: ferr } = await c
-    .from('profiles').select('id').eq('email', String(email).trim()).limit(1);
-  if (ferr) return { ok: false, error: friendlyError(ferr) };
-  if (!found || found.length === 0) return { ok: false, error: '未找到该邮箱的用户' };
   const { data, error } = await c
-    .from('profiles').update({ role: 'agent', commission_rate: rate }).eq('id', found[0].id).select();
+    .from('audit_logs')
+    .select('id, actor_id, actor_role, action, target_id, detail, created_at')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (switched(guard)) return { ok: false, error: SWITCHED };
   if (error) return { ok: false, error: friendlyError(error) };
-  if (!data || data.length === 0) return { ok: false, error: '无权限（需 owner）' };
-  return { ok: true, profile: data[0] };
-}
-
-async function demoteAgent(userId) {
-  const c = client();
-  if (!c) return { ok: false, error: NOT_CONFIGURED };
-  const { data, error } = await c
-    .from('profiles').update({ role: 'user', commission_rate: null }).eq('id', userId).select();
-  if (error) return { ok: false, error: friendlyError(error) };
-  if (!data || data.length === 0) return { ok: false, error: '无权限（需 owner）' };
-  return { ok: true, profile: data[0] };
-}
-
-async function assignAgent(userEmail, agentEmail) {
-  const c = client();
-  if (!c) return { ok: false, error: NOT_CONFIGURED };
-  const emails = [String(userEmail).trim(), String(agentEmail).trim()];
-  const { data: rows, error: ferr } = await c.from('profiles').select('id, email').in('email', emails);
-  if (ferr) return { ok: false, error: friendlyError(ferr) };
-  const u = rows && rows.find((r) => r.email === emails[0]);
-  const a = rows && rows.find((r) => r.email === emails[1]);
-  if (!u) return { ok: false, error: '未找到该用户' };
-  if (!a) return { ok: false, error: '未找到该代理' };
-  const { data, error } = await c.from('profiles').update({ agent_id: a.id }).eq('id', u.id).select();
-  if (error) return { ok: false, error: friendlyError(error) };
-  if (!data || data.length === 0) return { ok: false, error: '无权限（需 owner）' };
-  return { ok: true, profile: data[0] };
-}
-
-// ---------- agent 操作 ----------
-
-async function listMyUsers() {
-  const c = client();
-  if (!c) return { ok: false, error: NOT_CONFIGURED };
-  const { data: sess } = await c.auth.getSession();
-  const uid = sess && sess.session ? sess.session.user.id : null;
-  if (!uid) return { ok: false, error: '未登录' };
-  const { data, error } = await c
-    .from('profiles').select('id, email, created_at').eq('agent_id', uid)
-    .order('created_at', { ascending: true });
-  if (error) return { ok: false, error: friendlyError(error) };
-  return { ok: true, users: data };
+  return { ok: true, logs: data };
 }
 
 module.exports = {
-  computeCommission,
-  settleAgentCommissions,
-  listProfiles,
-  promoteToAgent,
-  demoteAgent,
-  assignAgent,
-  listMyUsers
+  listStaff,
+  createStaff,
+  suspendStaff,
+  deleteStaff,
+  assignChannel,
+  allocateChars,
+  resetPassword,
+  listAudit
 };
