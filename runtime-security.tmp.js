@@ -590,7 +590,7 @@ test('preload: exact bridge routes, listener cleanup, no generic IPC escape', as
   } });
   equal(exposed.length, 1); equal(exposed[0][0], 'haituo'); const bridge = exposed[0][1];
   const keys = Object.keys(bridge);
-  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels'];
+  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels', 'signal'];
   check(keys.every((k) => allowedGroups.includes(k)), 'Unexpected bridge group: ' + JSON.stringify(keys));
   for (const g of ['auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls']) check(keys.includes(g), 'Missing bridge group ' + g);
   const routes = {
@@ -606,6 +606,11 @@ test('preload: exact bridge routes, listener cleanup, no generic IPC escape', as
   for (const [key, channel] of Object.entries(routes)) {
     const [group, method] = key.split('.'); await bridge[group][method]('arg1', 'arg2');
     equal(invoked.at(-1)[0], channel); check(f.handlers.has(channel));
+  }
+  // Signal 渠道处理器由 signal/channel.js 注册（非 ipc.js），仅校验桥接通道名。
+  for (const [key, channel] of Object.entries({ 'signal.open': 'signal:open', 'signal.setBounds': 'signal:setBounds', 'signal.setVisible': 'signal:setVisible', 'signal.sleep': 'signal:sleep' })) {
+    const [group, method] = key.split('.'); await bridge[group][method]('arg1', 'arg2');
+    equal(invoked.at(-1)[0], channel);
   }
   for (const [group, method, channel] of [['auth', 'onAuthStateChange', 'auth:state'], ['screenshot', 'onResult', 'screenshot:result']]) {
     let received; const off = bridge[group][method](value => { received = value; }); listeners.get(channel)({}, 'payload');
@@ -921,6 +926,7 @@ test('main wiring: binds actual main contents before loading and forwards SIGNED
     './runtime-access': rt.access, './ipc': { registerIpc() {} }, './screenshot': { init() {} },
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
+    './signal/channel': { init: () => {} },
     electron: { BrowserWindow: FakeWindow, app: { setName() {}, getPath: () => path.parse(ROOT).root,
       whenReady: () => ({ then(fn) { ready = fn; } }), on: (name, fn) => callbacks.set(name, fn), quit() {} } } });
   ready(); equal(windows.length, 1);
@@ -1318,6 +1324,7 @@ test('encryption: main passes the exact safeStorage dependency to auth only afte
     './auth': { init: (...args) => initCalls.push(args) }, './runtime-access': {}, './screenshot': {},
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
+    './signal/channel': { init: () => {} },
     './ipc': { registerIpc: () => { throw stop; } },
     electron: { safeStorage: secure.api, BrowserWindow: function () { throw new HarnessError('GUI forbidden'); },
       app: { setName() {}, getPath(name) { equal(name, 'userData'); return fakeDirectory; },

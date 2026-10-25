@@ -7,6 +7,7 @@ const screenshot = require('./screenshot');
 const access = require('./runtime-access');
 const appSettings = require('./app-settings');
 const webchannels = require('./src/webchannels');
+const signalChannel = require('./signal/channel');
 
 // 品牌唯一来源：package.json 的 productName
 const BRAND_NAME = pkg.productName || pkg.name;
@@ -63,6 +64,7 @@ app.whenReady().then(() => {
   createWindow();
   screenshot.init({ getMainWindow: () => mainWin });
   webchannels.init({ getMainWindow: () => mainWin });
+  signalChannel.init({ getMainWindow: () => mainWin });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

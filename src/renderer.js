@@ -350,8 +350,12 @@ function clearEditPreview() {
 }
 
 // 由 HaituoAccess 在每次身份切换（含公开 enterDemo/signIn/signOut 入口）时调用，
-// 保证旧身份的编辑预览与截图状态不跨身份残留。
-window.__haituoResetTransient = clearEditPreview;
+// 保证旧身份的编辑预览、截图状态与内嵌渠道视图不跨身份残留。
+window.__haituoResetTransient = () => {
+  clearEditPreview();
+  if (window.HaituoWebChannels && window.HaituoWebChannels.destroyAll) window.HaituoWebChannels.destroyAll();
+  if (window.HaituoSignal && window.HaituoSignal.destroyAll) window.HaituoSignal.destroyAll();
+};
 
 function showAuth(message, isOk) {
   Access.clear();
@@ -586,6 +590,7 @@ function pageWrap(node) {
 
 function renderContent() {
   if (window.HaituoWebChannels) window.HaituoWebChannels.onBeforeRender();
+  if (window.HaituoSignal) window.HaituoSignal.onBeforeRender();
   content.innerHTML = '';
   if (!Access.can(pagePermission(state.view))) {
     content.appendChild(Platform.denied());
@@ -723,6 +728,21 @@ function buildEmbed(acc) {
   // 新增渠道注册点：WhatsApp / Telegram 网页版用 WebContentsView 内嵌（见 webchannels-view.js）；演示账号走本地 mock，不加载真实网页
   if (window.HaituoWebChannels && window.HaituoWebChannels.supports(acc) && !acc.demo) {
     return window.HaituoWebChannels.build(acc, currentAccount, {
+      openMenu: openAccountMenu,
+      setSleep: (on) => {
+        if (!currentAccount()) return;
+        acc.status = on ? 'sleep' : 'online';
+        renderAccounts();
+        renderPageTabs();
+        renderContent();
+        showGlobalToast(on ? '服务已休眠，进程已释放' : '服务已唤醒：' + acc.name);
+      }
+    });
+  }
+
+  // Signal 渠道：非演示账号走源码级内嵌（同进程 WebContentsView 承载真实渲染器）
+  if (window.HaituoSignal && window.HaituoSignal.supports(acc) && !acc.demo) {
+    return window.HaituoSignal.build(acc, currentAccount, {
       openMenu: openAccountMenu,
       setSleep: (on) => {
         if (!currentAccount()) return;
@@ -1665,6 +1685,7 @@ function deleteAccount(acc) {
   const ok = window.confirm('确定删除服务「' + acc.name + '」？演示阶段仅从当前工作台移除。');
   if (!ok) return;
   if (window.HaituoWebChannels) window.HaituoWebChannels.destroy(acc.id);
+  if (window.HaituoSignal) window.HaituoSignal.destroy(acc.id);
   state.accounts = state.accounts.filter((a) => a.id !== acc.id);
   if (state.activeId === acc.id) state.activeId = state.accounts[0] ? state.accounts[0].id : null;
   closeAccountMenu();

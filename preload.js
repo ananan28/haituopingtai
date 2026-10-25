@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld('haituo', {
       return () => ipcRenderer.removeListener('webchannels:event', listener);
     }
   },
+  signal: {
+    open: (accountId) => ipcRenderer.invoke('signal:open', accountId),
+    setBounds: (accountId, rect) => ipcRenderer.invoke('signal:setBounds', accountId, rect),
+    setVisible: (accountId, visible) => ipcRenderer.invoke('signal:setVisible', accountId, visible),
+    sleep: (accountId) => ipcRenderer.invoke('signal:sleep', accountId)
+  },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
