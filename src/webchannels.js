@@ -3,6 +3,8 @@
 // 本模块只在主进程被 main.js 引入；纯函数（channelUrl / partitionFor / siteAllowed）无 electron 依赖，便于单测。
 const { WebContentsView, ipcMain, app } = require('electron');
 const { storageToken, accountAllowed } = require('./channel-identity');
+const path = require('node:path');
+const translations = require('./translation-cache');
 
 // 延迟引入 runtime-access：本文件顶层保持无副作用，避免单测时加载 auth/dotenv。
 let access = null;
@@ -119,7 +121,8 @@ function createView(accountId, channel) {
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      ...(channel.startsWith('whatsapp') ? { preload: path.join(__dirname, 'whatsapp-cache-preload.js') } : {})
     }
   });
 
@@ -139,7 +142,7 @@ function createView(accountId, channel) {
 
   view.setVisible(false);
   win.contentView.addChildView(view);
-  views.set(accountId, { view, channel, url });
+  views.set(accountId, { view, channel, url, accountId, scope: getAccess().current().scope });
 
   wc.loadURL(url).catch(() => notify(accountId, 'did-fail-load', { code: -1, desc: '加载失败' }));
 
@@ -153,6 +156,16 @@ function init(options = {}) {
     registered = true;
     app.on('before-quit', destroyAll);
     getAccess().onChange(destroyAll);
+    translations.register({ app, ipcMain, access: getAccess(), resolve(event) {
+      for (const entry of views.values()) {
+        const wc = entry.view.webContents;
+        if (wc.isDestroyed() || event?.sender !== wc || !event.senderFrame || event.senderFrame !== wc.mainFrame) continue;
+        try {
+          if (new URL(event.senderFrame.url).origin === 'https://web.whatsapp.com') return entry;
+        } catch { /* Deny invalid/redirected frame URLs. */ }
+      }
+      return null;
+    } });
   } else {
     return;
   }

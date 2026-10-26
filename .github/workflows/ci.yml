@@ -42,6 +42,12 @@ jobs:
       - name: Test persistent message records
         run: npm run test:messages
 
+      - name: Test WhatsApp translation cache and virtual list lifecycle
+        run: npm run test:whatsapp
+
+      - name: Test WhatsApp sandbox preload in real Chromium
+        run: npm run test:whatsapp:electron
+
       - name: Test Signal profile lifecycle
         run: npm run test:signal
 

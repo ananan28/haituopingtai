@@ -8,6 +8,7 @@ function verify(archive) {
   const entries = new Set(asar.listPackage(archive).map(name => name.replace(/\\/g, '/').replace(/^\/+/, '')));
   const required = [
     'main.js', 'preload.js', 'message-store.js', 'messages-ipc.js', 'src/message-records.js', 'src/index.html', 'src/channel-identity.js',
+    'src/translation-cache.js', 'src/whatsapp-cache-preload.js',
     'signal/index.js', 'signal/preload.js', 'signal/translation-policy.js', 'signal/profile-runtime.js', 'signal/sql-client.js', 'signal/channel.js', 'signal/profiles.js',
     'signal/background.html', 'signal/service.js',
     'signal/bundles/preload/wrapper.js', 'signal/bundles/workers/sql.js',

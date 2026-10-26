@@ -56,6 +56,7 @@ function fixture(file) {
   const app = new EventEmitter();
   let identity = { scope: 'server:one', demo: false, accountIds: ['a:b'] };
   let onChange;
+  let resolveTranslation;
   const access = { trusted: () => true, can: () => true, current: () => identity, revision: () => identity?.scope, onChange: fn => { onChange = fn; } };
   const created = [];
   class View {
@@ -94,6 +95,7 @@ function fixture(file) {
       if (name === './index.js') return signal;
       if (name === './profiles.js') return profiles;
       if (name === 'node:path') return path;
+      if (name === './translation-cache') return { register(options) { resolveTranslation = options.resolve; } };
       throw Error('Unexpected dependency: ' + name);
     }
   };
@@ -103,6 +105,7 @@ function fixture(file) {
   api.init({ getMainWindow: () => win }); // Reinitialization must not register duplicate IPC handlers.
   const prefix = file.startsWith('signal/') ? 'signal' : 'webchannels';
   return { api, created, children, handlers, event: { sender: wc },
+    resolveTranslation: event => resolveTranslation(event),
     call: (method, ...args) => handlers.get(prefix + ':' + method)({ sender: wc }, ...args),
     switchIdentity: value => { identity = value; onChange(); }, app };
 }
@@ -145,4 +148,23 @@ test('web channel cannot silently reuse a view from a different provider', async
   assert.equal((await f.call('open', 'a:b', 'whatsapp')).ok, true);
   assert.equal((await f.call('open', 'a:b', 'telegram-a')).ok, false);
   assert.equal(f.created.length, 1);
+});
+
+test('WhatsApp cache resolves only the registered view main frame at the exact HTTPS origin', async () => {
+  const f = fixture('src/webchannels.js');
+  await f.call('open', 'a:b', 'whatsapp');
+  const wc = f.created[0].webContents;
+  assert.equal(f.created[0].options.webPreferences.sandbox, true);
+  assert.match(f.created[0].options.webPreferences.preload, /whatsapp-cache-preload\.js$/);
+  wc.mainFrame = { url: 'https://web.whatsapp.com/' };
+  assert.equal(f.resolveTranslation({ sender: wc, senderFrame: wc.mainFrame }).accountId, 'a:b');
+  assert.equal(f.resolveTranslation({ sender: wc, senderFrame: { url: wc.mainFrame.url } }), null);
+  assert.equal(f.resolveTranslation({ sender: {}, senderFrame: wc.mainFrame }), null);
+  for (const url of ['http://web.whatsapp.com/','https://web.whatsapp.com.evil.test/','https://whatsapp.com/','file:///test']) {
+    wc.mainFrame.url = url;
+    assert.equal(f.resolveTranslation({ sender: wc, senderFrame: wc.mainFrame }), null);
+  }
+  wc.mainFrame.url = 'https://web.whatsapp.com/';
+  f.call('sleep', 'a:b');
+  assert.equal(f.resolveTranslation({ sender: wc, senderFrame: wc.mainFrame }), null);
 });
