@@ -12,7 +12,7 @@
 - `supabase/functions/platform-translate/core.mjs`、`index.ts`：只接受用户 JWT；用户身份来自 Auth，字符数从原文计算；模型 URL/模型/key 只来自服务端配置；支持多个 OpenAI 兼容服务逐个失败切换；禁止客户端指定成本、其他用户或 API 地址；结果先持久结算再返回。
 - `platform-translation.js`、`src/webchannels.js`：桌面端调用单一平台函数，绑定已授权账号/作用域；稳定请求 ID 防止响应丢失后的重复扣费；身份切换后丢弃旧结果。
 - `auth.js`、`runtime-access.js`：真实身份端口从服务端 RLS 查询，不借用本机/演示账号；移除分配时关闭旧视图。
-- `ipc.js`、`preload.js`、`src/renderer.js`：真正创建服务端端口并恢复到账号列表；演示/本机不写线上端口。真实账号支持的渠道使用平台端口，不再只保存配置草稿。
+- `ipc.js`、`preload.js`、`src/renderer.js`、`src/platform.js`：真正创建服务端端口并恢复到账号列表；演示/本机不写线上端口。真实账号支持的渠道使用平台端口，不再只保存配置草稿。真实身份界面明确告知翻译按服务端字符结算，不沿用“不会扣费”的演示说明。
 - `tests/platform-service.test.js`、`tests/platform-service-db.test.js`、`runtime-security.tmp.js`、`tests/channel-isolation.test.js`：身份、租户、额度、重放、失败恢复及原回归。
 - `package.json`、`package-lock.json`、`.github/workflows/ci.yml`、`scripts/verify-package.js`、`.gitignore`：0.1.7、CI、自测入口、打包排除后端内容及 CLI 临时目录。
 
