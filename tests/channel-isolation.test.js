@@ -96,6 +96,7 @@ function fixture(file) {
       if (name === './profiles.js') return profiles;
       if (name === 'node:path') return path;
       if (name === './translation-cache') return { register(options) { resolveTranslation = options.resolve; } };
+      if (name === '../platform-translation') return {createTranslator(){ return async()=>{}; }};
       throw Error('Unexpected dependency: ' + name);
     }
   };

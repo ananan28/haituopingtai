@@ -179,9 +179,14 @@ async function fetchIdentity(c, userId) {
   if (role === 'staff') {
     const staff = await fetchStaffAccount(c, userId);
     if (!staff) return null;
-    return { role, accountIds: Array.isArray(staff.channel_allowlist) ? staff.channel_allowlist : [] };
   }
-  return { role, accountIds: [] };
+  try {
+    const {data,error}=await c.from('channel_ports').select('id,channel,name').eq('active',true);
+    if(error || !Array.isArray(data)) return null;
+    const channels=['whatsapp','whatsapp-pure','whatsapp-business','signal','telegram','telegram-k','telegram-a'];
+    if(data.some(p=>typeof p.id!=='string' || !channels.includes(p.channel) || typeof p.name!=='string')) return null;
+    return {role,accountIds:data.map(p=>p.id),accounts:data.map(p=>({id:p.id,channel:p.channel,name:p.name}))};
+  } catch { return null; }
 }
 
 // 新登录/注册前先清空旧会话：切换账号失败时不得留下上一个身份的凭据，
@@ -210,7 +215,7 @@ async function signIn(email, password) {
   if (error) return { ok: false, error: error.message };
   const identity = data.user ? await module.exports.fetchIdentity(client, data.user.id) : null;
   if (!identity) return { ok: false, user: null, error: '无法核验服务器角色，访问已关闭' };
-  return { ok: true, user: { id: data.user.id, email: data.user.email, role: identity.role, accountIds: identity.accountIds } };
+  return { ok: true, user: { id: data.user.id, email: data.user.email, role: identity.role, accountIds: identity.accountIds, accounts: identity.accounts } };
 }
 
 async function signOut() {
@@ -244,7 +249,7 @@ async function getSession() {
   const u = verified.data.user;
   const identity = await module.exports.fetchIdentity(client, u.id);
   if (!identity) return { ok: false, user: null, error: '无法核验服务器角色，访问已关闭' };
-  return { ok: true, user: { id: u.id, email: u.email, role: identity.role, accountIds: identity.accountIds } };
+  return { ok: true, user: { id: u.id, email: u.email, role: identity.role, accountIds: identity.accountIds, accounts: identity.accounts } };
 }
 
 function onAuthStateChange(cb) {

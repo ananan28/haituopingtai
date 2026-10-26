@@ -9,6 +9,7 @@ function verify(archive) {
   const required = [
     'main.js', 'preload.js', 'message-store.js', 'messages-ipc.js', 'src/message-records.js', 'src/index.html', 'src/channel-identity.js',
     'src/translation-cache.js', 'src/whatsapp-cache-preload.js',
+    'platform-translation.js',
     'signal/index.js', 'signal/preload.js', 'signal/translation-policy.js', 'signal/profile-runtime.js', 'signal/sql-client.js', 'signal/channel.js', 'signal/profiles.js',
     'signal/background.html', 'signal/service.js',
     'signal/bundles/preload/wrapper.js', 'signal/bundles/workers/sql.js',
@@ -26,6 +27,7 @@ function verify(archive) {
     assert.ok(!/(^|\/)\.env(?:$|\.)|\.tmp\.js$|(^|\/)\.git(?:\/|$)/.test(name), 'Private/development file packaged: ' + name);
   }
   assert.ok(!entries.has('signal/bundles/main.js'), 'Former application entrypoint must not be distributed');
+  assert.ok(![...entries].some(name=>name.startsWith('supabase/')), 'Backend code/config must not ship in the desktop package');
   const bundled = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
   assert.equal(bundled.version, pkg.version);
   assert.equal(bundled.name, 'haituo-platform');

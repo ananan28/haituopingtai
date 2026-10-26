@@ -414,7 +414,10 @@ function enterWorkspace() {
   panelCache.clear();
   fxPanelBody.replaceChildren();
   if (window.HaituoStudio) window.HaituoStudio.resetSession();
-  state.accounts = ((Access.get()?.local ? window.HAITUO_LOCAL_ACCOUNTS : window.HAITUO_ACCOUNTS) || []).filter((a) => Access.account(a.id)).map((a) => {
+  const identity=Access.get();
+  const sourceAccounts=identity?.local ? window.HAITUO_LOCAL_ACCOUNTS : identity?.demo ? window.HAITUO_ACCOUNTS
+    : (identity?.accounts || []).map(a=>({...a,account:'平台端口',status:'online',unread:0,demo:false,loggedIn:false}));
+  state.accounts = (sourceAccounts || []).filter((a) => Access.account(a.id)).map((a) => {
     const saved = Platform.read('account', {}, a.id);
     return { ...a, name: typeof saved.name === 'string' ? saved.name.slice(0, 24) : a.name,
       avatar: typeof saved.avatar === 'string' ? saved.avatar.slice(0, 4) : a.avatar,
@@ -2064,7 +2067,7 @@ catalogGrid.addEventListener('click', (e) => {
   if (channel) openConfig(channel);
 });
 
-channelForm.addEventListener('submit', (e) => {
+channelForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!requirePermission('catalog')) return;
   const channel = state.pendingChannel;
@@ -2080,6 +2083,29 @@ channelForm.addEventListener('submit', (e) => {
   if (!validUrl) {
     showGlobalToast('请填写以 http:// 或 https:// 开头的服务地址');
     cfgUrl.focus();
+    return;
+  }
+  if(!Access.get()?.demo && !Access.get()?.local) {
+    if(custom || !['whatsapp','whatsapp-pure','whatsapp-business','signal','telegram','telegram-k','telegram-a'].includes(channel.id)) {
+      showGlobalToast('该渠道尚未接入平台服务'); return;
+    }
+    const identity=Access.get(),button=channelForm.querySelector('[type="submit"]');
+    if(button?.disabled) return;
+    if(button)button.disabled=true;
+    let created=0;
+    try {
+      for(let i=0;i<count;i++) {
+        if(Access.get()!==identity)throw new Error('身份已切换');
+        const result=await window.haituo.channel.create(channel.id,count===1?baseName:baseName+' '+(i+1));
+        if(!result.ok)throw new Error(result.error || '端口创建失败');
+        created++;
+      }
+      if(Access.get()!==identity)return;
+      const refreshed=await Access.refresh();
+      if(!refreshed.ok)throw new Error('端口已创建，但刷新身份失败，请重新登录');
+      enterWorkspace(); closeModal('channel-config'); showGlobalToast('已创建 '+created+' 个平台端口');
+    } catch(error) { if(Access.get()===identity)showGlobalToast('已创建 '+created+' 个；'+error.message); }
+    finally { if(button)button.disabled=false; }
     return;
   }
   let drafts = [];

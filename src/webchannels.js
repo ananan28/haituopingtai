@@ -5,6 +5,7 @@ const { WebContentsView, ipcMain, app } = require('electron');
 const { storageToken, accountAllowed } = require('./channel-identity');
 const path = require('node:path');
 const translations = require('./translation-cache');
+const { createTranslator } = require('../platform-translation');
 
 // 延迟引入 runtime-access：本文件顶层保持无副作用，避免单测时加载 auth/dotenv。
 let access = null;
@@ -103,6 +104,8 @@ function destroyAll() {
 }
 
 function createView(accountId, channel) {
+  const accounts=getAccess().current()?.accounts;
+  if(accounts && !accounts.some(a=>a.id===accountId && a.channel===channel)) return {ok:false,error:'账号渠道不匹配'};
   const url = channelUrl(channel);
   if (!url) return { ok: false, error: '不支持的渠道' };
   const win = mainWindow();
@@ -156,7 +159,8 @@ function init(options = {}) {
     registered = true;
     app.on('before-quit', destroyAll);
     getAccess().onChange(destroyAll);
-    translations.register({ app, ipcMain, access: getAccess(), resolve(event) {
+    translations.register({ app, ipcMain, access: getAccess(),
+      translator:createTranslator({getClient:()=>require('../auth').getClient(),access:getAccess()}), resolve(event) {
       for (const entry of views.values()) {
         const wc = entry.view.webContents;
         if (wc.isDestroyed() || event?.sender !== wc || !event.senderFrame || event.senderFrame !== wc.mainFrame) continue;

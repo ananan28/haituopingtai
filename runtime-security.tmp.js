@@ -63,7 +63,7 @@ function load(file, deps, globals = {}) {
   new vm.Script(sources[file], { filename: path.join(ROOT, file) }).runInContext(context);
   return module.exports;
 }
-const USER = role => ({ id: 'server-' + role, email: role + '@example.invalid', role, accountIds: [] });
+const USER = role => ({ id: 'server-' + role, email: role + '@example.invalid', role, accountIds: [], accounts: [] });
 const session = role => ({ ok: true, user: USER(role) });
 function runtime(authOverrides = {}) {
   const calls = [];
@@ -356,7 +356,7 @@ for (const mode of ['missing', 'error', 'reject', 'timeout']) test(`auth restore
 test('auth: local session ID/role ignored; profile belongs to getUser verified ID', async () => {
   const a = authFixture({ stored: { ...USER('owner'), user_metadata: { role: 'owner' } }, verified: USER('user'), profile: { role: 'user' } });
   const result = await a.auth.getSession(); accepted(result); equal(result.user, USER('user'));
-  equal(a.calls.filter(c => c[0] === 'eq'), [['eq', 'id', 'server-user']]);
+  equal(a.calls.filter(c => c[0] === 'eq'), [['eq', 'id', 'server-user'], ['eq','active',true]]);
 });
 test('runtime plus auth: local owner metadata cannot grant owner-only permissions', async () => {
   const a = authFixture({ profile: { role: 'user' }, verified: { ...USER('user'), user_metadata: { role: 'owner' } } });
@@ -1132,8 +1132,8 @@ for (const role of ['user', 'staff']) test(`encryption: fresh auth/runtime resta
   const r = runtime(a.auth), result = await r.access.restore(); accepted(result);
   equal(result.user.id, USER(role).id); equal(result.user.role, role); equal(result.user.scope, 'server:' + USER(role).id);
   equal(a.calls.filter(c => c[0] === 'eq'), role === 'staff'
-    ? [['eq', 'id', USER(role).id], ['eq', 'id', USER(role).id]]
-    : [['eq', 'id', USER(role).id]]);
+    ? [['eq', 'id', USER(role).id], ['eq', 'id', USER(role).id], ['eq','active',true]]
+    : [['eq', 'id', USER(role).id], ['eq','active',true]]);
   equal(a.calls.filter(c => c[0] === 'getUser').length, 1);
   equal(secure.calls.filter(c => c[0] === 'decryptString').length, 1);
   check(!/FAKE_ACCESS_|FAKE_REFRESH_/.test(JSON.stringify(result)));

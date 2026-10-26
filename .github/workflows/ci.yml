@@ -36,6 +36,17 @@ jobs:
       - name: Test database security (PGlite)
         run: npm run test:db
 
+      - name: Test platform service, quota reservations and ownership
+        run: npm run test:service
+
+      - name: Set up Deno for service type checking
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
+
+      - name: Check platform Edge service
+        run: deno check supabase/functions/platform-translate/index.ts
+
       - name: Test channel isolation
         run: npm run test:channels
 

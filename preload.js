@@ -12,6 +12,7 @@ const brand = {
 
 contextBridge.exposeInMainWorld('haituo', {
   brand,
+  channel: { create: (channel,name) => ipcRenderer.invoke('channel:create',channel,name) },
   messages: {
     list: (value) => ipcRenderer.invoke('messages:list', value),
     put: (value) => ipcRenderer.invoke('messages:put', value),

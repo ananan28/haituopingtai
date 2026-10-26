@@ -45,6 +45,7 @@ function identity(user, isDemo) {
     id: user.id, email: user.email, role, label: LABELS[role], demo: isDemo, revision: generation,
     scope: isDemo ? 'demo:' + role : 'server:' + user.id,
     permissions: Object.freeze((RULES[role] || []).slice()),
+    ...(!isDemo && Array.isArray(user.accounts) ? {accounts:Object.freeze(user.accounts.map(a=>Object.freeze({...a})))} : {}),
     accountIds: Object.freeze(isDemo ? (role === 'staff' ? ['demo:wa-lea'] : ACCOUNT_IDS.map((id) => 'demo:' + id)) : serverAccounts)
   });
 }
@@ -67,7 +68,8 @@ async function restore() {
     if (current) { current = null; changed(); }
     return { ...result, user: null };
   }
-  if (current && (current.id !== result.user.id || current.role !== result.user.role)) changed();
+  if (current && (current.id !== result.user.id || current.role !== result.user.role
+    || current.accountIds.some(id=>!(result.user.accountIds || []).includes(id)))) changed();
   current = identity(result.user, false);
   return { ...result, user: current };
 }
