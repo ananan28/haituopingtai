@@ -59,6 +59,22 @@ jobs:
       - name: Test WhatsApp sandbox preload in real Chromium
         run: npm run test:whatsapp:electron
 
+      - name: Test local WhatsApp content cache and IPC
+        run: npm run test:whatsapp:store
+
+      - name: Test WhatsApp fixture before-paint hooks and capture evidence
+        run: npm run test:whatsapp:frames
+
+      - name: Upload WhatsApp local diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: haituo-whatsapp-diagnostics
+          path: |
+            artifacts/whatsapp/**
+            docs/whatsapp-0.1.8-acceptance.md
+          if-no-files-found: warn
+
       - name: Test Signal profile lifecycle
         run: npm run test:signal
 

@@ -96,6 +96,9 @@ function fixture(file) {
       if (name === './profiles.js') return profiles;
       if (name === 'node:path') return path;
       if (name === './translation-cache') return { register(options) { resolveTranslation = options.resolve; } };
+      if (name === './translation-store') return {flush(){}};
+      if (name === './wa-dom-hook') return {install:async()=>{}};
+      if (name === '../ipc') return {registerWhatsAppTranslations(options){resolveTranslation=options.resolve;}};
       if (name === '../platform-translation') return {createTranslator(){ return async()=>{}; }};
       throw Error('Unexpected dependency: ' + name);
     }
@@ -155,8 +158,8 @@ test('WhatsApp cache resolves only the registered view main frame at the exact H
   const f = fixture('src/webchannels.js');
   await f.call('open', 'a:b', 'whatsapp');
   const wc = f.created[0].webContents;
-  assert.equal(f.created[0].options.webPreferences.sandbox, true);
-  assert.match(f.created[0].options.webPreferences.preload, /whatsapp-cache-preload\.js$/);
+  assert.equal(f.created[0].options.webPreferences.sandbox, false);
+  assert.match(f.created[0].options.webPreferences.preload, /wa-preload\.js$/);
   wc.mainFrame = { url: 'https://web.whatsapp.com/' };
   assert.equal(f.resolveTranslation({ sender: wc, senderFrame: wc.mainFrame }).accountId, 'a:b');
   assert.equal(f.resolveTranslation({ sender: wc, senderFrame: { url: wc.mainFrame.url } }), null);

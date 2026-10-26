@@ -1,7 +1,7 @@
 {
   "name": "haituo-platform",
   "productName": "海拓商业版",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "海拓商业版 - 多语言翻译与多渠道消息聚合平台",
   "author": "海拓",
   "main": "main.js",
@@ -12,7 +12,7 @@
     "test:db": "node staff-security.tmp.js",
     "test:ui": "electron platform-preview.tmp.js",
     "test:ocr": "node ocr-security.tmp.js",
-    "ci": "npm run test:vm && npm run test:local && npm run test:db && npm run test:service && npm run test:channels && npm run test:messages && npm run test:whatsapp && npm run test:whatsapp:electron && npm run test:signal && npm run test:ui && npm run test:ocr",
+    "ci": "npm run test:vm && npm run test:local && npm run test:db && npm run test:service && npm run test:channels && npm run test:messages && npm run test:whatsapp && npm run test:whatsapp:store && npm run test:whatsapp:frames && npm run test:whatsapp:electron && npm run test:signal && npm run test:ui && npm run test:ocr",
     "test:channels": "node --test tests/channel-isolation.test.js",
     "test:package": "node scripts/verify-package.js",
     "test:messages": "node --test tests/message-store.test.js tests/messages-ipc.test.js",
@@ -25,7 +25,9 @@
     "test:local": "node --test tests/local-workspace.test.js",
     "test:whatsapp": "node --test tests/translation-cache.test.js tests/whatsapp-cache.test.js",
     "test:whatsapp:electron": "electron tests/whatsapp-cache-electron.js",
-    "test:service": "node --test tests/platform-service.test.js tests/platform-service-db.test.js"
+    "test:service": "node --test tests/platform-service.test.js tests/platform-service-db.test.js",
+    "test:whatsapp:store": "node --test tests/translation-store.test.js tests/wa-ipc.test.js tests/wa-preload.test.js tests/wa-dom-hook.test.js",
+    "test:whatsapp:frames": "electron tests/wa-before-paint-electron.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.2.16",

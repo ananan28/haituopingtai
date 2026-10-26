@@ -4,8 +4,8 @@
 const { WebContentsView, ipcMain, app } = require('electron');
 const { storageToken, accountAllowed } = require('./channel-identity');
 const path = require('node:path');
-const translations = require('./translation-cache');
-const { createTranslator } = require('../platform-translation');
+const translations = require('./translation-store');
+const waHooks = require('./wa-dom-hook');
 
 // 延迟引入 runtime-access：本文件顶层保持无副作用，避免单测时加载 auth/dotenv。
 let access = null;
@@ -51,6 +51,7 @@ function siteAllowed(channel, hostname) {
 
 let getMainWindow = () => null;
 const views = new Map(); // accountId -> { view, channel, url }
+const senders = new Map(); // webContents.id -> verified port binding
 let registered = false;
 
 function mainWindow() {
@@ -89,6 +90,7 @@ function notify(accountId, type, detail) {
 function destroy(accountId) {
   const entry = views.get(accountId);
   if (!entry) return;
+  translations.flush();
   const win = mainWindow();
   if (win) {
     try { win.contentView.removeChildView(entry.view); } catch { /* 已移除则忽略 */ }
@@ -97,6 +99,7 @@ function destroy(accountId) {
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
   } catch { /* 关闭失败不阻断 */ }
   views.delete(accountId);
+  senders.delete(entry.view.webContents.id);
 }
 
 function destroyAll() {
@@ -125,7 +128,7 @@ function createView(accountId, channel) {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      ...(channel.startsWith('whatsapp') ? { preload: path.join(__dirname, 'whatsapp-cache-preload.js') } : {})
+      ...(channel.startsWith('whatsapp') ? { preload: path.join(__dirname, 'wa-preload.js'),sandbox:false } : {})
     }
   });
 
@@ -145,9 +148,15 @@ function createView(accountId, channel) {
 
   view.setVisible(false);
   win.contentView.addChildView(view);
-  views.set(accountId, { view, channel, url, accountId, scope: getAccess().current().scope });
-
-  wc.loadURL(url).catch(() => notify(accountId, 'did-fail-load', { code: -1, desc: '加载失败' }));
+  const entry={view,channel,url,accountId,scope:getAccess().current().scope};
+  views.set(accountId,entry);senders.set(wc.id,entry);
+  wc.on('destroyed',()=>senders.delete(wc.id));
+  wc.on('did-start-navigation',()=>{if(channel.startsWith('whatsapp'))translations.flush();});
+  (async()=>{
+    if(channel.startsWith('whatsapp'))await waHooks.install(wc);
+    if(wc.isDestroyed()||views.get(accountId)!==entry||getAccess().current()?.scope!==entry.scope)return;
+    await wc.loadURL(url);
+  })().catch(()=>notify(accountId,'did-fail-load',{code:-1,desc:'渠道预加载或缓存初始化失败'}));
 
   return { ok: true, url, created: true };
 }
@@ -159,17 +168,12 @@ function init(options = {}) {
     registered = true;
     app.on('before-quit', destroyAll);
     getAccess().onChange(destroyAll);
-    translations.register({ app, ipcMain, access: getAccess(),
-      translator:createTranslator({getClient:()=>require('../auth').getClient(),access:getAccess()}), resolve(event) {
-      for (const entry of views.values()) {
-        const wc = entry.view.webContents;
-        if (wc.isDestroyed() || event?.sender !== wc || !event.senderFrame || event.senderFrame !== wc.mainFrame) continue;
-        try {
-          if (new URL(event.senderFrame.url).origin === 'https://web.whatsapp.com') return entry;
-        } catch { /* Deny invalid/redirected frame URLs. */ }
-      }
-      return null;
-    } });
+    require('../ipc').registerWhatsAppTranslations({app,ipcMain,access:getAccess(),resolve(event){
+      const entry=senders.get(event?.sender?.id);if(!entry)return null;
+      const wc=entry.view.webContents;
+      if(wc.isDestroyed()||event.sender!==wc||!event.senderFrame||event.senderFrame!==wc.mainFrame)return null;
+      try{return new URL(event.senderFrame.url).origin==='https://web.whatsapp.com'?entry:null;}catch{return null;}
+    }});
   } else {
     return;
   }

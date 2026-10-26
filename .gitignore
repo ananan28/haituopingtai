@@ -1,5 +1,6 @@
 # 依赖
 node_modules/
+artifacts/
 supabase/.temp/
 # Signal 原生依赖（随源码迁入，非 npm 管理；main/renderer 均按此解析）
 !signal/node_modules/
