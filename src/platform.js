@@ -21,13 +21,13 @@
   function node(title, subtitle, html) {
     const root = document.createElement('div');
     root.className = 'platform-page';
-    root.innerHTML = `<header class="platform-head"><div><span class="platform-eyebrow">HAITUO WORKSPACE</span><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><span class="demo-badge">${access.get()?.demo ? '离线演示 · 不连接业务服务器' : '服务器身份 · 服务接入待部署'}</span></header>${html}`;
+    root.innerHTML = `<header class="platform-head"><div><span class="platform-eyebrow">HAITUO WORKSPACE</span><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><span class="demo-badge">${access.get()?.demo ? '离线演示 · 不连接业务服务器' : '服务器身份 · 服务端核验'}</span></header>${html}`;
     return root;
   }
   function denied() { return node('无法访问', '当前身份未获此项授权', note('隐藏入口同样受权限校验；请返回首页。')); }
   function go(id, label) { return access.can(id) ? `<button class="hp-ghost" type="button" data-platform-page="${esc(id)}">${esc(label)}</button>` : ''; }
   function amount(kind) {
-    if (!access.get()?.demo) return '未连接';
+    if (!access.get()?.demo) return '待查询';
     if (kind === 'used') return access.get().role === 'staff' ? '3,200' : '32,400';
     return access.get().role === 'staff' ? '46,800' : '1,284,600';
   }
@@ -57,20 +57,24 @@
     if (!access.can('home')) return denied();
     const user = access.get();
     const role = user.role;
+    if (user.local) return node('本机渠道工作区', '连接本机聊天渠道；未登录服务器，没有资金或后台管理权限。',
+      card('选择渠道', accounts.map(a => `<button class="platform-account hp-ghost" type="button" data-platform-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>独立登录态与本地资料</small></button>`).join('')) +
+      card('当前范围', '<p>WhatsApp、Telegram 使用官方网页；Signal 使用平台内部的独立账号视图。请在渠道内完成扫码登录。</p><p>真实 AI 翻译与字符计费尚未接入，本工作区不展示虚构余额。</p>') + go('appearance', '外观设置'));
     const descriptions = {
       owner: '平台管理与配置预览；运营管理和个人消费分开。',
       admin: '公告、定价与子账号管理；不含角色管理与财务提现。',
       user: '专注聊天、翻译、自己的账号与余额，并可管理自己名下的子账号。',
       staff: '仅使用分配给你的渠道账号、字符额度与翻译功能。'
     };
-    const totalLabel = role === 'staff' ? '分配的剩余额度（示例）' : '自身字符余额（示例）';
+    const totalLabel = (role === 'staff' ? '分配的剩余额度' : '自身字符余额') + (user.demo ? '（示例）' : '');
     const staffLink = access.can('staff:manage') ? `<button class="hp-ghost" type="button" data-platform-page="staff">员工子账号</button>` : '';
     const links = go('accounts', role === 'staff' ? '分配的账号' : '我的渠道账号') + go('recharge', '套餐与充值') + go('usage', '用量与额度') + go('appearance', '外观设置') + staffLink + go('providers', '模型配置预览') + go('announcements', '公告草稿');
-    const accountsHtml = accounts.map((a) => `<button class="platform-account hp-ghost" type="button" data-platform-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>${esc(a.channel)} · 海拓演示会话</small></button>`).join('');
+    const accountsHtml = accounts.map((a) => `<button class="platform-account hp-ghost" type="button" data-platform-account="${esc(a.id)}"><strong>${esc(a.name)}</strong><small>${esc(a.channel)} · ${user.demo ? '海拓演示会话' : '平台端口'}</small></button>`).join('');
     return node('欢迎回来，' + user.label, descriptions[role],
-      `<div class="platform-metrics"><section><span>${role === 'staff' ? '分配的账号' : '可见渠道账号'}</span><strong>${accounts.length}</strong><small>${user.demo ? '本地样例' : '真实渠道尚未接入'}</small></section><section><span>${totalLabel}</span><strong>${amount('remaining')}</strong><small>不会产生真实扣费</small></section><section><span>本月用量（示例）</span><strong>${amount('used')}</strong><small>正式用量待服务端核验</small></section></div>` +
+      `<div class="platform-metrics"><section><span>${role === 'staff' ? '分配的账号' : '可见渠道账号'}</span><strong>${accounts.length}</strong><small>${user.demo ? '本地样例' : '服务端授权端口'}</small></section><section><span>${totalLabel}</span><strong>${amount('remaining')}</strong><small>${user.demo ? '不会产生真实扣费' : '翻译按服务端字符额度结算'}</small></section><section><span>本月用量（示例）</span><strong>${amount('used')}</strong><small>正式用量待服务端核验</small></section></div>` +
       `<div class="platform-columns">${card('常用入口', `<div class="platform-links">${links}</div>`)}${card('继续会话', accountsHtml || '<p>暂无已接入渠道。正式账号不会加载他人的演示会话。</p>')}</div>` +
-      card('平台状态', '<ul class="platform-status"><li>聊天：当前是海拓自制演示，非官方聊天页面。</li><li>翻译与模型：本地预览，不调用真实模型，不扣真实余额。</li><li>支付、正式员工管理、配置同步：待后端部署与验收。</li><li>官方网页版渠道后续保留原生操作；Signal 桌面模块需完成 AGPL 合规核查。</li></ul>') +
+      (user.demo ? card('本机渠道测试', '<p>打开独立本机工作区，连接 WhatsApp、Telegram 与 Signal。不会获得服务器管理或资金权限。</p><button class="hp-primary" type="button" data-local-workspace>进入本机渠道工作区</button>') : '') +
+      card('平台状态', user.demo ? '<ul class="platform-status"><li>聊天：当前是海拓自制演示，非官方聊天页面。</li><li>翻译与模型：本地预览，不调用真实模型，不扣真实余额。</li><li>支付、正式员工管理、配置同步：待后端部署与验收。</li><li>官方网页版渠道后续保留原生操作；Signal 桌面模块需完成 AGPL 合规核查。</li></ul>' : '<ul class="platform-status"><li>端口归属由服务器核验。</li><li>WhatsApp 已接平台翻译服务接口；启用后按成功翻译原文字符结算，失败释放预占额度。</li><li>余额与用量查询界面尚待接入，不展示虚构数值。</li><li>Signal、Telegram 翻译及截图、语音等入口仍待融合；支付未开通。线上可用性以部署与验收为准。</li></ul>') +
       note('切换首页不会清空当前账号草稿。演示资料与服务器身份分区保存，不迁移或覆盖旧版未归属的本地存档。'));
   }
 
@@ -78,7 +82,7 @@
     if (!access.can('recharge')) return denied();
     const user = access.get();
     return node('我的套餐与充值', '这是当前主账号的消费区，不是平台资金或代理佣金账户。',
-      `<div class="platform-metrics"><section><span>字符余额（示例）</span><strong>${amount('remaining')}</strong><small>不代表真实可消费余额</small></section><section><span>当前套餐</span><strong>${user.demo ? '团队套餐样例' : '待查询'}</strong><small>正式套餐与币种待确认</small></section><section><span>本月用量（示例）</span><strong>${amount('used')}</strong><small>未发生真实扣费</small></section></div>` +
+      `<div class="platform-metrics"><section><span>字符余额（示例）</span><strong>${amount('remaining')}</strong><small>不代表真实可消费余额</small></section><section><span>当前套餐</span><strong>${user.demo ? '团队套餐样例' : '待查询'}</strong><small>正式套餐与币种待确认</small></section><section><span>本月用量（示例）</span><strong>${amount('used')}</strong><small>${user.demo ? '未发生真实扣费' : '真实用量查询待接入'}</small></section></div>` +
       card('套餐预览 · 未开通支付', '<div class="platform-packages">' + ['体验套餐', '标准套餐', '团队套餐'].map((name) => `<article><h3>${name}</h3><strong>价格待定</strong><p>币种、额度和有效期尚未正式发布</p><button class="hp-primary" type="button" disabled>支付未开通</button></article>`).join('') + '</div>') +
       card('我的订单', '<p>暂无真实订单。付款、到账与退款均未开放，不展示虚构的成功订单。</p>') +
       note('真实金额必须由服务端生成订单，并由支付平台验签回调确认到账；客户端不能通过修改价格、角色或余额改账。' + (user.role === 'owner' ? ' 平台定价请前往模型配置预览，保存不会发布给商户。' : '')));
@@ -87,9 +91,10 @@
   function usage() {
     if (!access.can('usage')) return denied();
     const staff = access.get().role === 'staff';
-    return node(staff ? '我的分配额度' : '我的用量', '示例数据仅供界面验收，不与真实钱包共用。',
+    const demo = access.get().demo;
+    return node(staff ? '我的分配额度' : '我的用量', demo ? '示例数据仅供界面验收，不与真实钱包共用。' : '额度由服务端核验；本页查询界面尚待接入。',
       `<div class="platform-metrics"><section><span>${staff ? '商户分配上限（示例）' : '剩余字符（示例）'}</span><strong>${staff && access.get().demo ? '50,000' : amount('remaining')}</strong></section><section><span>已用（示例）</span><strong>${amount('used')}</strong></section><section><span>剩余（示例）</span><strong>${amount('remaining')}</strong></section></div>` +
-      card(staff ? '申请增加额度' : '用量明细', staff ? '<p>请联系所属商户。申请后端未部署，本页不会虚构提交记录。</p><button class="hp-primary" type="button" disabled>额度申请未开通</button>' : '<p>真实调用明细、失败重试与并发扣费待服务端验收；当前翻译仅记录会话内模拟用量，不写入钱包。</p>'));
+      card(staff ? '申请增加额度' : '用量明细', staff ? '<p>请联系所属商户。申请后端未部署，本页不会虚构提交记录。</p><button class="hp-primary" type="button" disabled>额度申请未开通</button>' : demo ? '<p>演示翻译仅记录模拟用量，不写入钱包。</p>' : '<p>已接平台服务的翻译会消耗字符额度，失败释放预占；真实用量明细查询界面待接入，当前不展示虚构流水。</p>'));
   }
 
   function staffPage() {
@@ -300,7 +305,7 @@
       `<div class="platform-columns">
         ${card('个人资料', `<div class="personal-profile"><span class="personal-avatar">${esc(avatar)}</span><div><strong>${esc(displayName)}</strong><small>${esc(roleLabel)}${demo ? ' · 离线演示' : ''}</small></div></div>`)}
         ${card('资产', `<div class="personal-assets">
-          <div><span>字符余额</span><strong>${demo ? amount('remaining') : '待查询'}</strong><small>${demo ? '本地样例，不代表真实余额' : '未连接真实钱包'}</small></div>
+          <div><span>字符余额</span><strong>${demo ? amount('remaining') : '待查询'}</strong><small>${demo ? '本地样例，不代表真实余额' : '真实余额查询待接入'}</small></div>
           <div><span>字符额度</span><strong>${demo ? amount('remaining') : '待查询'}</strong><small>额度上限</small></div>
           <div><span>套餐</span><strong>${demo ? '团队套餐样例' : '待查询'}</strong><small>正式套餐与币种待确认</small></div>
         </div>`)}

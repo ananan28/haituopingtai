@@ -1,7 +1,7 @@
 {
   "name": "haituo-platform",
   "productName": "海拓商业版",
-  "version": "0.1.3",
+  "version": "0.1.7",
   "description": "海拓商业版 - 多语言翻译与多渠道消息聚合平台",
   "author": "海拓",
   "main": "main.js",
@@ -12,11 +12,29 @@
     "test:db": "node staff-security.tmp.js",
     "test:ui": "electron platform-preview.tmp.js",
     "test:ocr": "node ocr-security.tmp.js",
-    "ci": "npm run test:vm && npm run test:db && npm run test:ui && npm run test:ocr"
+    "ci": "npm run test:vm && npm run test:local && npm run test:db && npm run test:service && npm run test:channels && npm run test:messages && npm run test:whatsapp && npm run test:whatsapp:electron && npm run test:signal && npm run test:ui && npm run test:ocr",
+    "test:channels": "node --test tests/channel-isolation.test.js",
+    "test:package": "node scripts/verify-package.js",
+    "test:messages": "node --test tests/message-store.test.js tests/messages-ipc.test.js",
+    "prepare:signal": "node scripts/prepare-signal-native.js",
+    "test:signal": "node --test tests/signal-profile-runtime.test.js tests/signal-service.test.js",
+    "test:signal:electron": "electron tests/signal-native-electron.js",
+    "prestart": "npm run prepare:signal",
+    "predist": "npm run prepare:signal",
+    "test:signal:view": "electron tests/signal-view-electron.js",
+    "test:local": "node --test tests/local-workspace.test.js",
+    "test:whatsapp": "node --test tests/translation-cache.test.js tests/whatsapp-cache.test.js",
+    "test:whatsapp:electron": "electron tests/whatsapp-cache-electron.js",
+    "test:service": "node --test tests/platform-service.test.js tests/platform-service-db.test.js"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.2.16",
+    "@electron/asar": "3.4.1",
     "electron": "44.1.0",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "https-proxy-agent": "7.0.6",
+    "linkedom": "0.18.12",
+    "tar": "7.5.22"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -43,10 +61,15 @@
       "app-settings.js",
       "package.json",
       "src/**",
+      "signal/**",
       "assets/**",
       "!**/.env*",
       "!**/*.tmp.js",
-      "!**/*.log"
+      "!**/*.log",
+      "message-store.js",
+      "messages-ipc.js",
+      "platform-translation.js",
+      "!signal/bundles/main.js"
     ],
     "asar": true,
     "win": {
@@ -74,6 +97,10 @@
       "artifactName": "海拓商业版-Setup-${version}.exe",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "asarUnpack": [
+      "signal/node_modules/**",
+      "signal/bundles/workers/**"
+    ]
   }
 }

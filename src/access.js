@@ -39,6 +39,7 @@
     key: (name, accountId = '') => identity ? 'haituo.v2.' + identity.scope + '.' + encodeURIComponent(accountId) + '.' + name : null,
     refresh: () => transition(() => window.haituo.auth.getSession()),
     enterDemo: (role) => transition(() => window.haituo.auth.enterDemo(role)),
+    enterLocal: () => transition(() => window.haituo.auth.enterLocal()),
     signIn: (email, password) => transition(() => window.haituo.auth.signIn(email, password)),
     signOut: () => transition(() => window.haituo.auth.signOut())
   });

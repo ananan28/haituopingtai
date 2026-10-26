@@ -13,7 +13,7 @@
     "name": "Haituo"
   },
   "browserslist": "last 1 chrome versions",
-  "main": "bundles/main.js",
+  "main": "index.js",
   "optionalDependencies": {
     "fs-xattr": "0.4.0"
   },

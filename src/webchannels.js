@@ -2,6 +2,10 @@
 // 每渠道账号一个 WebContentsView + 独立 persist session 分区，登录态互不串。
 // 本模块只在主进程被 main.js 引入；纯函数（channelUrl / partitionFor / siteAllowed）无 electron 依赖，便于单测。
 const { WebContentsView, ipcMain, app } = require('electron');
+const { storageToken, accountAllowed } = require('./channel-identity');
+const path = require('node:path');
+const translations = require('./translation-cache');
+const { createTranslator } = require('../platform-translation');
 
 // 延迟引入 runtime-access：本文件顶层保持无副作用，避免单测时加载 auth/dotenv。
 let access = null;
@@ -28,10 +32,9 @@ function channelUrl(channel) {
   return CHANNEL_URLS[channel] || null;
 }
 
-// 每个账号一个独立持久分区：accountId 唯一 → 分区唯一 → 登录态/Cookie 不串。
-// 清理 ':' 等特殊字符避免分区名歧义（demo:wa-lea → demo-wa-lea），对同一账号保持稳定。
-function partitionFor(accountId) {
-  return 'persist:haituo-web-' + String(accountId).replace(/[^a-zA-Z0-9._-]/g, '-');
+// Persist sessions by verified identity + channel + exact account ID.
+function partitionFor(accountId, scope, channel) {
+  return 'persist:haituo-web-' + storageToken(scope, channel, accountId);
 }
 
 // 导航白名单：只允许停留在渠道站点及其子域内，防内嵌视图被导航到任意站点。
@@ -65,12 +68,7 @@ function webAllowed(event, accountId) {
   const acc = getAccess();
   if (!acc.can('account')) return false;
   if (typeof accountId !== 'string' || !ACCOUNT_ID_RE.test(accountId)) return false;
-  const identity = acc.current();
-  if (!identity || !Array.isArray(identity.accountIds)) return false;
-  // 兼容 scope 前缀（demo:wa-lea 与 wa-lea 互认），不同身份用不同分区，天然隔离。
-  return identity.accountIds.some((id) => id === accountId
-    || String(id).endsWith(':' + accountId)
-    || accountId.endsWith(':' + String(id)));
+  return accountAllowed(acc.current(), accountId);
 }
 
 function clampBounds(rect) {
@@ -106,6 +104,8 @@ function destroyAll() {
 }
 
 function createView(accountId, channel) {
+  const accounts=getAccess().current()?.accounts;
+  if(accounts && !accounts.some(a=>a.id===accountId && a.channel===channel)) return {ok:false,error:'账号渠道不匹配'};
   const url = channelUrl(channel);
   if (!url) return { ok: false, error: '不支持的渠道' };
   const win = mainWindow();
@@ -113,17 +113,19 @@ function createView(accountId, channel) {
 
   const existing = views.get(accountId);
   if (existing && !existing.view.webContents.isDestroyed()) {
+    if (existing.channel !== channel) return { ok: false, error: '账号渠道不匹配' };
     return { ok: true, url, created: false };
   }
 
   const view = new WebContentsView({
     webPreferences: {
-      partition: partitionFor(accountId),
+      partition: partitionFor(accountId, getAccess().current().scope, channel),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      ...(channel.startsWith('whatsapp') ? { preload: path.join(__dirname, 'whatsapp-cache-preload.js') } : {})
     }
   });
 
@@ -143,7 +145,7 @@ function createView(accountId, channel) {
 
   view.setVisible(false);
   win.contentView.addChildView(view);
-  views.set(accountId, { view, channel, url });
+  views.set(accountId, { view, channel, url, accountId, scope: getAccess().current().scope });
 
   wc.loadURL(url).catch(() => notify(accountId, 'did-fail-load', { code: -1, desc: '加载失败' }));
 
@@ -156,6 +158,20 @@ function init(options = {}) {
   if (!registered) {
     registered = true;
     app.on('before-quit', destroyAll);
+    getAccess().onChange(destroyAll);
+    translations.register({ app, ipcMain, access: getAccess(),
+      translator:createTranslator({getClient:()=>require('../auth').getClient(),access:getAccess()}), resolve(event) {
+      for (const entry of views.values()) {
+        const wc = entry.view.webContents;
+        if (wc.isDestroyed() || event?.sender !== wc || !event.senderFrame || event.senderFrame !== wc.mainFrame) continue;
+        try {
+          if (new URL(event.senderFrame.url).origin === 'https://web.whatsapp.com') return entry;
+        } catch { /* Deny invalid/redirected frame URLs. */ }
+      }
+      return null;
+    } });
+  } else {
+    return;
   }
 
   ipcMain.handle('webchannels:open', (event, accountId, channel) => {

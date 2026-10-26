@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const { PGlite } = require('C:/Users/AQ28n/AppData/Local/Temp/haituo-window2-checks/node_modules/@electric-sql/pglite');
+const { PGlite } = require('@electric-sql/pglite');
 const db = new PGlite();
 const ids = Object.fromEntries(['owner', 'admin', 'merchant', 'other', 'agent'].map((r, i) => [r, `20000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`]));
 const migrationDir = path.join(__dirname, 'supabase/migrations');

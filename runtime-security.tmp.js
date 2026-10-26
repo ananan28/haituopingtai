@@ -63,7 +63,7 @@ function load(file, deps, globals = {}) {
   new vm.Script(sources[file], { filename: path.join(ROOT, file) }).runInContext(context);
   return module.exports;
 }
-const USER = role => ({ id: 'server-' + role, email: role + '@example.invalid', role, accountIds: [] });
+const USER = role => ({ id: 'server-' + role, email: role + '@example.invalid', role, accountIds: [], accounts: [] });
 const session = role => ({ ok: true, user: USER(role) });
 function runtime(authOverrides = {}) {
   const calls = [];
@@ -356,7 +356,7 @@ for (const mode of ['missing', 'error', 'reject', 'timeout']) test(`auth restore
 test('auth: local session ID/role ignored; profile belongs to getUser verified ID', async () => {
   const a = authFixture({ stored: { ...USER('owner'), user_metadata: { role: 'owner' } }, verified: USER('user'), profile: { role: 'user' } });
   const result = await a.auth.getSession(); accepted(result); equal(result.user, USER('user'));
-  equal(a.calls.filter(c => c[0] === 'eq'), [['eq', 'id', 'server-user']]);
+  equal(a.calls.filter(c => c[0] === 'eq'), [['eq', 'id', 'server-user'], ['eq','active',true]]);
 });
 test('runtime plus auth: local owner metadata cannot grant owner-only permissions', async () => {
   const a = authFixture({ profile: { role: 'user' }, verified: { ...USER('user'), user_metadata: { role: 'owner' } } });
@@ -483,7 +483,7 @@ test('race: server invalidation during pending login must discard late identity'
   const before = f.access.revision(); f.access.invalidate(); d.resolve(session('owner'));
   const result = await pending;
   denied(result); check(f.access.revision() > before); check(f.access.current() === null);
-}, [['runtime-access.js', 'if (demo) return;'], ['runtime-access.js', "if (method === 'signIn' && result.ok"]]);
+}, [['runtime-access.js', 'if (demo || local) return;'], ['runtime-access.js', "if (method === 'signIn' && result.ok"]]);
 test('race: newer verification denial must stop older authorize and backend mutation', async () => {
   const d = deferred(); let n = 0;
   const f = ipcFixture(runtime({ getSession: () => ++n === 1 ? d.promise : Promise.resolve({ ok: false, user: null, error: 'revoked' }) }));
@@ -590,7 +590,7 @@ test('preload: exact bridge routes, listener cleanup, no generic IPC escape', as
   } });
   equal(exposed.length, 1); equal(exposed[0][0], 'haituo'); const bridge = exposed[0][1];
   const keys = Object.keys(bridge);
-  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels', 'signal'];
+  const allowedGroups = ['brand', 'system', 'auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls', 'channel', 'realtimeConfig', 'appSettings', 'webchannels', 'signal', 'messages'];
   check(keys.every((k) => allowedGroups.includes(k)), 'Unexpected bridge group: ' + JSON.stringify(keys));
   for (const g of ['auth', 'staff', 'clipboard', 'ocr', 'screenshot', 'windowControls']) check(keys.includes(g), 'Missing bridge group ' + g);
   const routes = {
@@ -927,6 +927,7 @@ test('main wiring: binds actual main contents before loading and forwards SIGNED
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
     './signal/channel': { init: () => {} },
+    './messages-ipc': { init: () => {} },
     electron: { BrowserWindow: FakeWindow, app: { setName() {}, getPath: () => path.parse(ROOT).root,
       whenReady: () => ({ then(fn) { ready = fn; } }), on: (name, fn) => callbacks.set(name, fn), quit() {} } } });
   ready(); equal(windows.length, 1);
@@ -1131,8 +1132,8 @@ for (const role of ['user', 'staff']) test(`encryption: fresh auth/runtime resta
   const r = runtime(a.auth), result = await r.access.restore(); accepted(result);
   equal(result.user.id, USER(role).id); equal(result.user.role, role); equal(result.user.scope, 'server:' + USER(role).id);
   equal(a.calls.filter(c => c[0] === 'eq'), role === 'staff'
-    ? [['eq', 'id', USER(role).id], ['eq', 'id', USER(role).id]]
-    : [['eq', 'id', USER(role).id]]);
+    ? [['eq', 'id', USER(role).id], ['eq', 'id', USER(role).id], ['eq','active',true]]
+    : [['eq', 'id', USER(role).id], ['eq','active',true]]);
   equal(a.calls.filter(c => c[0] === 'getUser').length, 1);
   equal(secure.calls.filter(c => c[0] === 'decryptString').length, 1);
   check(!/FAKE_ACCESS_|FAKE_REFRESH_/.test(JSON.stringify(result)));
@@ -1325,6 +1326,7 @@ test('encryption: main passes the exact safeStorage dependency to auth only afte
     './app-settings': { windowBackground: () => '#16181d', shouldMinimizeToTray: () => false, init: () => {} },
     './src/webchannels': { init: () => {} },
     './signal/channel': { init: () => {} },
+    './messages-ipc': { init: () => {} },
     './ipc': { registerIpc: () => { throw stop; } },
     electron: { safeStorage: secure.api, BrowserWindow: function () { throw new HarnessError('GUI forbidden'); },
       app: { setName() {}, getPath(name) { equal(name, 'userData'); return fakeDirectory; },

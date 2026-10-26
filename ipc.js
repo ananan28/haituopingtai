@@ -25,6 +25,7 @@ function registerIpc() {
   handle('auth:signout', () => access.signOut());
   handle('auth:session', () => access.restore());
   handle('auth:demo', (role) => access.enterDemo(role));
+  handle('auth:local', () => access.enterLocal());
 
   const protectedCall = (permission, fn) => async (...args) => {
     const verdict = await access.authorize(permission);
@@ -50,6 +51,15 @@ function registerIpc() {
     return distribution.resetPassword(targetId, password, guard);
   }));
   handle('audit:list', protectedCall('audit:read', () => distribution.listAudit()));
+  handle('channel:create', protectedCall('catalog', async (channel,name,guard) => {
+    if(!['whatsapp','whatsapp-pure','whatsapp-business','signal','telegram','telegram-k','telegram-a'].includes(channel)
+      || typeof name!=='string' || !name.trim() || name.length>100) return {ok:false,error:'端口参数无效'};
+    const client=auth.getClient();
+    if(!client)return {ok:false,error:'平台服务未配置'};
+    const {data,error}=await client.rpc('create_channel_port',{p_channel:channel,p_name:name.trim()});
+    if(!guard() || error)return {ok:false,error:'端口创建未确认，请刷新账号列表核对'};
+    return {ok:true,port:data};
+  }));
 
   // ---- 远程配置同步（Realtime postgres_changes）----
   // 订阅：登录（非演示）后渲染层调用，返回当前快照并建立转发；事件经 realtime-config:event 推送

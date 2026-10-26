@@ -12,6 +12,12 @@ const brand = {
 
 contextBridge.exposeInMainWorld('haituo', {
   brand,
+  channel: { create: (channel,name) => ipcRenderer.invoke('channel:create',channel,name) },
+  messages: {
+    list: (value) => ipcRenderer.invoke('messages:list', value),
+    put: (value) => ipcRenderer.invoke('messages:put', value),
+    translate: (value) => ipcRenderer.invoke('messages:translate', value)
+  },
   system: { fonts: () => ipcRenderer.invoke('system:fonts') },
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
@@ -19,6 +25,7 @@ contextBridge.exposeInMainWorld('haituo', {
     signIn: (email, password) => ipcRenderer.invoke('auth:signin', email, password),
     signOut: () => ipcRenderer.invoke('auth:signout'),
     enterDemo: (role) => ipcRenderer.invoke('auth:demo', role),
+    enterLocal: () => ipcRenderer.invoke('auth:local'),
     getSession: () => ipcRenderer.invoke('auth:session'),
     onAuthStateChange: (cb) => {
       const listener = (_e, payload) => cb(payload);
@@ -81,7 +88,9 @@ contextBridge.exposeInMainWorld('haituo', {
     open: (accountId) => ipcRenderer.invoke('signal:open', accountId),
     setBounds: (accountId, rect) => ipcRenderer.invoke('signal:setBounds', accountId, rect),
     setVisible: (accountId, visible) => ipcRenderer.invoke('signal:setVisible', accountId, visible),
-    sleep: (accountId) => ipcRenderer.invoke('signal:sleep', accountId)
+    sleep: (accountId) => ipcRenderer.invoke('signal:sleep', accountId),
+    refresh: (accountId) => ipcRenderer.invoke('signal:refresh', accountId),
+    destroyAll: () => ipcRenderer.invoke('signal:destroyAll')
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),

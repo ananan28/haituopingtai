@@ -401,10 +401,10 @@ function showApp() {
   authView.classList.remove('is-active');
   appView.classList.add('is-active');
   userAvatar.textContent = demo ? '演' : email.charAt(0).toUpperCase();
-  userName.textContent = demo ? '离线演示账号' : email;
-  roleBadge.textContent = demo ? '离线演示 · ' + ROLE_LABELS[role] : ROLE_LABELS[role];
+  userName.textContent = user.local ? '本机渠道工作区' : demo ? '离线演示账号' : email;
+  roleBadge.textContent = user.local ? '本机渠道 · 无服务器权限' : demo ? '离线演示 · ' + ROLE_LABELS[role] : ROLE_LABELS[role];
   roleBadge.dataset.role = demo ? 'demo' : role;
-  roleBadge.title = demo ? '本地样例 · 不具有服务器权限' : '角色已由服务器核验';
+  roleBadge.title = user.local ? '仅本机渠道联网使用，未登录服务器' : demo ? '本地样例 · 不具有服务器权限' : '角色已由服务器核验';
   setAuthMessage('');
 
   enterWorkspace();
@@ -414,7 +414,10 @@ function enterWorkspace() {
   panelCache.clear();
   fxPanelBody.replaceChildren();
   if (window.HaituoStudio) window.HaituoStudio.resetSession();
-  state.accounts = (window.HAITUO_ACCOUNTS || []).filter((a) => Access.account(a.id)).map((a) => {
+  const identity=Access.get();
+  const sourceAccounts=identity?.local ? window.HAITUO_LOCAL_ACCOUNTS : identity?.demo ? window.HAITUO_ACCOUNTS
+    : (identity?.accounts || []).map(a=>({...a,account:'平台端口',status:'online',unread:0,demo:false,loggedIn:false}));
+  state.accounts = (sourceAccounts || []).filter((a) => Access.account(a.id)).map((a) => {
     const saved = Platform.read('account', {}, a.id);
     return { ...a, name: typeof saved.name === 'string' ? saved.name.slice(0, 24) : a.name,
       avatar: typeof saved.avatar === 'string' ? saved.avatar.slice(0, 4) : a.avatar,
@@ -466,6 +469,7 @@ function paintTitleTools() {
 /* ---------- 账号 ---------- */
 
 function accountStatusLabel(acc) {
+  if (acc.local) return acc.status === 'sleep' ? '已休眠' : '本机渠道';
   if (!acc.loggedIn) return '待登录';
   return acc.status === 'sleep' ? '已休眠' : '运行中';
 }
@@ -756,18 +760,11 @@ function buildEmbed(acc) {
   }
 
   const meta = channelMeta(acc.channel);
-  const messages = embedScript(acc);
-  const listHtml = messages.map((m) => `<div class="em-msg ${m.side === 'out' ? 'is-out' : ''}">
-    <span class="em-msg-avatar${m.side === 'out' ? ' is-me' : ''}">${escapeHtml(m.avatar)}</span>
-    <div class="em-msg-main">
-      <div class="em-msg-meta"><span>${escapeHtml(m.name)}</span><span>${escapeHtml(m.time)}</span></div>
-      <div class="em-bubble">${escapeHtml(m.text)}</div>
-      ${m.tr ? `<div class="em-tr"><span class="em-tr-tag">译</span><span>${escapeHtml(m.tr)}</span></div>` : ''}
-    </div>
-  </div>`).join('');
+  const listHtml = '<p role="status" data-history-loading>正在读取本地消息记录…</p>';
 
   root.innerHTML += `<div class="em-body">
       <div class="em-date">今天 · 内嵌会话演示</div>
+      <button type="button" data-load-older hidden>加载更早消息</button>
       <div class="em-messages">${listHtml}</div>
     </div>
     <footer class="em-composer">
@@ -792,6 +789,37 @@ function buildEmbed(acc) {
   const count = root.querySelector('#em-count');
   const attach = root.querySelector('[data-em-attach]');
 
+  const validView = () => currentAccount() && root.isConnected;
+  const older = root.querySelector('[data-load-older]');
+  let oldest = null;
+  older.addEventListener('click', async () => {
+    if (!validView() || !oldest || older.disabled) return;
+    older.disabled = true;
+    try {
+      const records = await window.HaituoMessages.older(acc, { timestamp: oldest.timestamp, id: oldest.id }, validView);
+      if (!validView() || !records) return;
+      const top = body.scrollTop, height = body.scrollHeight;
+      list.insertAdjacentHTML('afterbegin', records.map(window.HaituoMessages.html).join(''));
+      if (records.length) oldest = records[0];
+      older.hidden = records.length < 100;
+      body.scrollTop = top + body.scrollHeight - height;
+    } catch { if (validView()) showGlobalToast('历史消息读取失败，请重试'); }
+    finally { if (validView()) older.disabled = false; }
+  });
+  let ready = false;
+  let saving = false;
+  const history = window.HaituoMessages.loadDemo(acc, embedScript(acc), currentAccount).then(records => {
+    if (!validView() || !records) return;
+    list.innerHTML = records.map(window.HaituoMessages.html).join('');
+    oldest = records[0] || null;
+    older.hidden = records.length < 100;
+    ready = true;
+    updateComposer();
+    body.scrollTop = body.scrollHeight;
+  }).catch(() => {
+    if (validView()) list.innerHTML = '<p role="alert">消息记录读取失败，请重新打开会话。已有记录不会被清除。</p>';
+  });
+
   input.maxLength = 10000;
   input.value = acc.draft || '';
   function updateComposer() {
@@ -800,34 +828,34 @@ function buildEmbed(acc) {
     Platform.write('draft', acc.draft, acc.id);
     const n = input.value.length;
     count.textContent = '已输入 ' + n + ' 字符';
-    send.disabled = n === 0;
+    send.disabled = n === 0 || !ready || saving;
   }
 
-  function pushOutgoing() {
-    if (!currentAccount()) return;
+  async function pushOutgoing() {
+    if (!validView() || saving || !ready) return;
     const text = input.value.trim();
     if (!text || text.length > 10000) return;
-    const now = new Date();
-    const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    // 译文常驻贴附：发送即译，译文永久贴在原消息下（双语对照），不临时显示、不等回帖。
-    let tr = '';
-    try {
-      const res = window.HaituoStudio ? window.HaituoStudio.runPanelTranslation(text) : { ok: false };
-      if (res && res.ok) tr = res.translation;
-    } catch (_) { /* 翻译失败仅隐藏译文，不影响发送 */ }
-    const row = document.createElement('div');
-    row.className = 'em-msg is-out';
-    row.innerHTML = `<span class="em-msg-avatar is-me">我</span>
-      <div class="em-msg-main">
-        <div class="em-msg-meta"><span>我</span><span>${time}</span></div>
-        <div class="em-bubble">${escapeHtml(text)}</div>
-        ${tr ? `<div class="em-tr"><span class="em-tr-tag">译</span><span>${escapeHtml(tr)}</span></div>` : ''}
-      </div>`;
-    list.appendChild(row);
-    input.value = '';
+    saving = true;
     updateComposer();
-    body.scrollTop = body.scrollHeight;
-    showGlobalToast('已加入演示会话（不发送到真实渠道）');
+    try {
+      let translated = '';
+      try {
+        const result = window.HaituoStudio?.runPanelTranslation(text);
+        if (result?.ok) translated = result.translation;
+      } catch { /* Keep the source record when the demo translator fails. */ }
+      const record = await window.HaituoMessages.saveOutgoing(acc, text, translated, currentAccount);
+      if (!validView() || !record) return;
+      list.insertAdjacentHTML('beforeend', window.HaituoMessages.html(record));
+      // Do not erase text entered while the previous message was being saved.
+      if (input.value.trim() === text) input.value = '';
+      body.scrollTop = body.scrollHeight;
+      showGlobalToast('已保存到本地演示会话（不发送到真实渠道）');
+    } catch {
+      if (validView()) showGlobalToast('消息保存失败，输入内容已保留，请重试');
+    } finally {
+      saving = false;
+      if (validView()) updateComposer();
+    }
   }
 
   updateComposer();
@@ -2039,7 +2067,7 @@ catalogGrid.addEventListener('click', (e) => {
   if (channel) openConfig(channel);
 });
 
-channelForm.addEventListener('submit', (e) => {
+channelForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!requirePermission('catalog')) return;
   const channel = state.pendingChannel;
@@ -2055,6 +2083,29 @@ channelForm.addEventListener('submit', (e) => {
   if (!validUrl) {
     showGlobalToast('请填写以 http:// 或 https:// 开头的服务地址');
     cfgUrl.focus();
+    return;
+  }
+  if(!Access.get()?.demo && !Access.get()?.local) {
+    if(custom || !['whatsapp','whatsapp-pure','whatsapp-business','signal','telegram','telegram-k','telegram-a'].includes(channel.id)) {
+      showGlobalToast('该渠道尚未接入平台服务'); return;
+    }
+    const identity=Access.get(),button=channelForm.querySelector('[type="submit"]');
+    if(button?.disabled) return;
+    if(button)button.disabled=true;
+    let created=0;
+    try {
+      for(let i=0;i<count;i++) {
+        if(Access.get()!==identity)throw new Error('身份已切换');
+        const result=await window.haituo.channel.create(channel.id,count===1?baseName:baseName+' '+(i+1));
+        if(!result.ok)throw new Error(result.error || '端口创建失败');
+        created++;
+      }
+      if(Access.get()!==identity)return;
+      const refreshed=await Access.refresh();
+      if(!refreshed.ok)throw new Error('端口已创建，但刷新身份失败，请重新登录');
+      enterWorkspace(); closeModal('channel-config'); showGlobalToast('已创建 '+created+' 个平台端口');
+    } catch(error) { if(Access.get()===identity)showGlobalToast('已创建 '+created+' 个；'+error.message); }
+    finally { if(button)button.disabled=false; }
     return;
   }
   let drafts = [];
@@ -2100,6 +2151,10 @@ document.addEventListener('click', (e) => {
     const action = userAction.dataset.userAction;
     if (action === 'logout') { doLogout(); return; }
     if (action === 'about') { openSheet('关于海拓', buildAboutPanel()); return; }
+  }
+  if (e.target.closest('[data-local-workspace]')) {
+    Access.enterLocal().then(result => { if (result.ok) showApp(); else showGlobalToast(result.error); });
+    return;
   }
   const route = e.target.closest('[data-platform-page]');
   if (route) selectPage(route.dataset.platformPage);

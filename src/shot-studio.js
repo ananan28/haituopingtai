@@ -952,9 +952,11 @@
 
   function pointFromEvent(e) {
     const rect = els.canvas.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0 && els.canvas.width > 0 && els.canvas.height > 0)
+      || !Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return null;
     return {
-      x: (e.clientX - rect.left) * (els.canvas.width / rect.width),
-      y: (e.clientY - rect.top) * (els.canvas.height / rect.height)
+      x: Math.max(0, Math.min(els.canvas.width - 1, (e.clientX - rect.left) * (els.canvas.width / rect.width))),
+      y: Math.max(0, Math.min(els.canvas.height - 1, (e.clientY - rect.top) * (els.canvas.height / rect.height)))
     };
   }
 
@@ -1209,6 +1211,7 @@
 
   function pickColor(e) {
     const point = pointFromEvent(e);
+    if (!point) return;
     const x = Math.max(0, Math.min(els.canvas.width - 1, Math.floor(point.x)));
     const y = Math.max(0, Math.min(els.canvas.height - 1, Math.floor(point.y)));
     const data = els.ctx.getImageData(x, y, 1, 1).data;
@@ -1295,6 +1298,7 @@
       return;
     }
     const point = pointFromEvent(e);
+    if (!point) return;
     if (studio.tool === 'text') {
       commitTextInput();
       openTextInput(point);
@@ -1346,6 +1350,7 @@
   function onCanvasMove(e) {
     if (!access.can('screenshot') || !studio.image || !studio.open) return;
     const point = pointFromEvent(e);
+    if (!point) return;
     if (studio.erasing) {
       eraseAt(point);
       renderCanvas();
