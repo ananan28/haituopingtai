@@ -8,3 +8,9 @@ test('CDP setup stops an existing load, attaches, enables Page and installs with
   assert.equal(calls[3][0],'Page.addScriptToEvaluateOnNewDocument');assert.equal(calls[3][1].runImmediately,true);
   assert.ok(calls[3][1].source.includes('replaceChildren'));assert.equal(calls[4],'loadURL');
 });
+test('CDP attachment or command failure leaves the primary preload path available',async()=>{
+  for(const commandFails of [false,true]){
+    const wc={isLoading:()=>false,debugger:{isAttached:()=>commandFails,attach(){throw Error('unavailable');},sendCommand:async()=>{throw Error('no target');}}};
+    assert.equal((await install(wc)).preloadFallback,true);
+  }
+});

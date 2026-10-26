@@ -36,7 +36,8 @@ function mainWorldHook(){
 }
 async function install(wc){
   if(wc.isLoading?.())wc.stop();
-  if(!wc.debugger.isAttached())wc.debugger.attach('1.3');
+  try{if(!wc.debugger.isAttached())wc.debugger.attach('1.3');}
+  catch{return{preloadFallback:true};}
   const setup=(async()=>{
     await wc.debugger.sendCommand('Page.enable');
     return wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument',{source:'('+mainWorldHook.toString()+')();',runImmediately:true});
@@ -45,6 +46,7 @@ async function install(wc){
   // the same ordered CDP chain finishes as the target becomes available.
   let timer;
   try{return await Promise.race([setup,new Promise(resolve=>{timer=setTimeout(()=>resolve({preloadFallback:true}),1500);})]);}
+  catch{return{preloadFallback:true};}
   finally{clearTimeout(timer);setup.catch(()=>{});}
 }
 module.exports={mainWorldHook,install};
