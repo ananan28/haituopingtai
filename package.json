@@ -27,7 +27,9 @@
     "test:whatsapp:electron": "electron tests/whatsapp-cache-electron.js",
     "test:service": "node --test tests/platform-service.test.js tests/platform-service-db.test.js",
     "test:whatsapp:store": "node --test tests/translation-store.test.js tests/wa-ipc.test.js tests/wa-preload.test.js tests/wa-dom-hook.test.js",
-    "test:whatsapp:frames": "electron tests/wa-before-paint-electron.js"
+    "test:whatsapp:frames": "electron tests/wa-before-paint-electron.js",
+    "dist:mac": "electron-builder --mac dmg --arm64",
+    "predist:mac": "npm run prepare:signal && node scripts/prepare-signal-macos.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.2.16",
@@ -103,6 +105,19 @@
     "asarUnpack": [
       "signal/node_modules/**",
       "signal/bundles/workers/**"
-    ]
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "Haituo-Commercial-${version}-macOS-${arch}.${ext}",
+      "identity": null
+    }
   }
 }

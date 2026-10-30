@@ -1,0 +1,57 @@
+name: macOS ARM64 commercial preview
+on:
+  push:
+    branches: [codex/whatsapp-persistent-bubbles]
+    paths:
+      - '.github/workflows/macos.yml'
+      - 'scripts/prepare-signal-macos.js'
+      - 'scripts/verify-package.js'
+      - 'package.json'
+  workflow_dispatch:
+jobs:
+  macos-arm64:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify Apple Silicon builder
+        run: test "$(uname -m)" = arm64
+      - run: npm ci
+      - run: npm run prepare:signal
+      - run: node scripts/prepare-signal-macos.js
+      - name: Local cache, IPC and isolation tests
+        run: npm run test:whatsapp:store && npm run test:channels && npm run test:signal
+      - name: WhatsApp first-frame fixture
+        run: npm run test:whatsapp:frames
+      - name: Signal native SQLCipher and isolated views
+        run: npm run test:signal:electron && npm run test:signal:view
+      - name: Build M4-compatible ARM64 DMG
+        run: npm run dist:mac
+      - name: Verify package and executable architecture
+        run: |
+          npm run test:package -- "dist/mac-arm64/海拓商业版.app/Contents/Resources/app.asar"
+          file "dist/mac-arm64/海拓商业版.app/Contents/MacOS/海拓商业版" | tee dist/architecture.txt
+          grep -q arm64 dist/architecture.txt
+          shasum -a 256 dist/*.dmg > dist/SHA256-macOS-arm64.txt
+          hdiutil verify dist/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haituo-commercial-0.1.8-macOS-arm64
+          path: |
+            dist/*.dmg
+            dist/SHA256-macOS-arm64.txt
+            dist/architecture.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: haituo-whatsapp-diagnostics-macOS-arm64
+          path: |
+            artifacts/whatsapp/**
+            docs/whatsapp-0.1.8-acceptance.md
