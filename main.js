@@ -9,6 +9,7 @@ const appSettings = require('./app-settings');
 const webchannels = require('./src/webchannels');
 const signalChannel = require('./signal/channel');
 const messages = require('./messages-ipc');
+const translationStore = require('./src/translation-store');
 
 // 品牌唯一来源：package.json 的 productName
 const BRAND_NAME = pkg.productName || pkg.name;
@@ -38,6 +39,7 @@ function createWindow() {
   });
 
   mainWin = win;
+  win.on('hide',()=>translationStore.flush());
   win.on('close', (event) => {
     if (appSettings.shouldMinimizeToTray()) { event.preventDefault(); win.hide(); }
   });
@@ -50,6 +52,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  translationStore.init(app);
   appSettings.init({ getMainWindow: () => mainWin, createWindow, brand: BRAND_NAME });
   auth.init(path.join(app.getPath('userData'), 'session.json'), safeStorage);
   registerIpc();
@@ -77,3 +80,4 @@ app.on('window-all-closed', () => {
   if (process.platform === 'darwin') return;
   if (!appSettings.shouldMinimizeToTray()) app.quit();
 });
+app.on('before-quit',()=>translationStore.flush());

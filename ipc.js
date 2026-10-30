@@ -7,6 +7,8 @@ const realtimeConfig = require('./realtime-config');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execute = promisify(execFile);
+// Kept separate from platform-page IPC: WhatsApp uses its bound view/main frame.
+function registerWhatsAppTranslations(options){return require('./src/wa-ipc').register(options);}
 
 function registerIpc() {
   const handle = (channel, fn) =>
@@ -139,4 +141,4 @@ function registerIpc() {
   });
 }
 
-module.exports = { registerIpc };
+module.exports = { registerIpc, registerWhatsAppTranslations };
