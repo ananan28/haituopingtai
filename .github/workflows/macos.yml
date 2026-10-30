@@ -39,6 +39,7 @@ jobs:
           file "dist/mac-arm64/海拓商业版.app/Contents/MacOS/海拓商业版" | tee dist/architecture.txt
           grep -q arm64 dist/architecture.txt
           shasum -a 256 dist/*.dmg > dist/SHA256-macOS-arm64.txt
+          codesign --verify --deep --strict "dist/mac-arm64/海拓商业版.app"
           hdiutil verify dist/*.dmg
       - uses: actions/upload-artifact@v4
         with:

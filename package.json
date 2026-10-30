@@ -117,7 +117,7 @@
       ],
       "category": "public.app-category.productivity",
       "artifactName": "Haituo-Commercial-${version}-macOS-${arch}.${ext}",
-      "identity": null
+      "identity": "-"
     }
   }
 }
